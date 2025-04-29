@@ -28,11 +28,7 @@ drive_service = connect_drive()
 @st.cache_resource
 def create_or_get_folder():
     query = "mimeType='application/vnd.google-apps.folder' and name='GolfBank_Folder' and trashed=false"
-    results = drive_service.files().list(
-        q=query,
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True
-    ).execute()
+    results = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
     items = results.get('files', [])
     if items:
         return items[0]['id']
@@ -41,40 +37,27 @@ def create_or_get_folder():
             'name': 'GolfBank_Folder',
             'mimeType': 'application/vnd.google-apps.folder'
         }
-        file = drive_service.files().create(
-            body=file_metadata,
-            fields='id',
-            supportsAllDrives=True
-        ).execute()
+        file = drive_service.files().create(body=file_metadata, fields='id', supportsAllDrives=True).execute()
         return file.get('id')
 
 GAMES_FOLDER_ID = create_or_get_folder()
 
-# === 小工具 Functions ===
+# === 工具 Functions ===
 def save_game_to_drive(game_data, game_id):
     from googleapiclient.http import MediaInMemoryUpload
-    file_metadata = {
-        'name': f'game_{game_id}.json',
-        'parents': [GAMES_FOLDER_ID]
-    }
+    file_metadata = {'name': f'game_{game_id}.json', 'parents': [GAMES_FOLDER_ID]}
     media = MediaInMemoryUpload(json.dumps(game_data, ensure_ascii=False, indent=2).encode(), mimetype='application/json')
     drive_service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
 
-
 def load_game_from_drive(game_id):
     query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
-    result = drive_service.files().list(
-        q=query,
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True
-    ).execute()
+    result = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
     items = result.get('files', [])
     if not items:
         return None
     file_id = items[0]['id']
     file = drive_service.files().get_media(fileId=file_id).execute()
     return json.loads(file)
-
 
 def generate_qr(url):
     img = qrcode.make(url)
@@ -88,13 +71,12 @@ st.title("🏌️ Golf BANK 系統")
 
 mode = st.sidebar.radio("選擇模式", ["建立新比賽", "主控端成績輸入", "隊員查看比賽", "歷史紀錄管理"])
 
-# === 建立新比賽 ===
 if mode == "建立新比賽":
     game_id = str(uuid.uuid4())[:8]
     st.success(f"✅ 新比賽ID：{game_id}")
 
     players = st.text_input("輸入球員名稱（用逗號分隔）", "Alice,Bob,Charlie,David").split(",")
-    handicaps = {p: st.number_input(f"{p.strip()} 差點", 0, 54, 0) for p in players}
+    handicaps = {p.strip(): st.number_input(f"{p.strip()} 差點", 0, 54, 0) for p in players}
 
     par = [4, 4, 3, 5, 4, 4, 3, 5, 4, 5, 4, 3, 4, 4, 3, 4, 5, 4]
     hcp = list(range(1, 19))
@@ -123,7 +105,6 @@ if mode == "建立新比賽":
         buf = generate_qr(view_url)
         st.image(buf)
 
-# === 主控端成績輸入 ===
 elif mode == "主控端成績輸入":
     game_id = st.text_input("輸入比賽ID")
     if game_id:
@@ -131,22 +112,63 @@ elif mode == "主控端成績輸入":
         if not game_data:
             st.error("找不到該比賽！")
             st.stop()
+
         players = game_data['players']
+        handicaps = game_data['handicaps']
+        par = game_data['par']
+        hcp = game_data['hcp']
+        running_points = game_data['running_points']
+        hole_logs = game_data['hole_logs']
+        point_bank = 1
+
         for i in range(18):
-            st.subheader(f"第{i+1}洞（Par {game_data['par'][i]}，HCP {game_data['hcp'][i]}）")
+            st.subheader(f"第{i+1}洞（Par {par[i]}，HCP {hcp[i]}）")
             cols = st.columns(len(players))
             for idx, p in enumerate(players):
                 with cols[idx]:
                     score = st.number_input(f"{p} 桿數", min_value=1, max_value=15, key=f"score_{p}_{i}")
-                    event = st.multiselect(f"{p} 事件", ["OB", "水障礙", "下沙", "3推"], key=f"event_{p}_{i}")
                     game_data['scores'].setdefault(p, {})[str(i)] = score
-                    game_data['events'].setdefault(p, {})[str(i)] = event
+
             if st.button(f"✅ 確認第{i+1}洞", key=f"confirm_{i}"):
+                raw_scores = {p: game_data['scores'][p][str(i)] for p in players}
+
+                # 計算調整後桿數
+                adjusted_scores = {}
+                for p1 in players:
+                    adj = 0
+                    for p2 in players:
+                        if p1 == p2:
+                            continue
+                        diff = handicaps[p2] - handicaps[p1]
+                        if diff > 0 and hcp[i] <= diff:
+                            adj += 1
+                    adjusted_scores[p1] = raw_scores[p1] - adj
+
+                victories = {p: 0 for p in players}
+                for p1 in players:
+                    for p2 in players:
+                        if p1 == p2:
+                            continue
+                        if adjusted_scores[p1] < adjusted_scores[p2]:
+                            victories[p1] += 1
+
+                winners = [p for p in players if victories[p] == len(players)-1]
+
+                if winners:
+                    w = winners[0]
+                    running_points[w] += point_bank
+                    hole_logs.append(f"🏆 第{i+1}洞勝者：{w}（得 {point_bank} 點）")
+                    point_bank = 1
+                else:
+                    point_bank += 1
+                    hole_logs.append(f"⚖️ 第{i+1}洞平手（累積 {point_bank} 點）")
+
+                game_data['running_points'] = running_points
+                game_data['hole_logs'] = hole_logs
                 game_data['completed'] += 1
                 save_game_to_drive(game_data, game_id)
                 st.success("✅ 已同步到Google Drive！")
 
-# === 隊員查看比賽 ===
 elif mode == "隊員查看比賽":
     game_id = st.text_input("輸入比賽ID")
     if game_id:
@@ -163,14 +185,9 @@ elif mode == "隊員查看比賽":
             for log in game_data['hole_logs']:
                 st.markdown(f"- {log}")
 
-# === 歷史紀錄管理 ===
 elif mode == "歷史紀錄管理":
     query = f"name contains 'game_' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
-    result = drive_service.files().list(
-        q=query,
-        supportsAllDrives=True,
-        includeItemsFromAllDrives=True
-    ).execute()
+    result = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
     items = result.get('files', [])
     if items:
         options = {item['name'].replace('game_', '').replace('.json', ''): item['id'] for item in items}
