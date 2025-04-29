@@ -104,7 +104,7 @@ if mode == "建立新比賽":
         save_game_to_drive(game_data, game_id)
         st.session_state.mode = "主控端成績輸入"
         st.session_state.current_game_id = game_id
-        st.experimental_rerun()
+        st.rerun()
 
 elif mode == "主控端成績輸入":
     if st.session_state.current_game_id:
