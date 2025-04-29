@@ -62,7 +62,7 @@ def generate_qr(url):
     return buf
 
 st.set_page_config(page_title="🏌️ Golf BANK v3.0", layout="wide")
-st.title("\ud83c\udfc9 Golf BANK \u7cfb\u7d71")
+st.title("🏌️ Golf BANK 系統")
 
 if "mode" not in st.session_state:
     st.session_state.mode = None
