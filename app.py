@@ -61,15 +61,13 @@ def generate_qr(url):
     img.save(buf)
     return buf
 
-st.set_page_config(page_title="🏌️ Golf BANK v3.1", layout="wide")
+st.set_page_config(page_title="🏌️ Golf BANK v3.2", layout="wide")
 st.title("🏌️ Golf BANK 系統")
 
 if "mode" not in st.session_state:
-    st.session_state.mode = None
+    st.session_state.mode = "選擇參賽球員"
 if "current_game_id" not in st.session_state:
     st.session_state.current_game_id = ""
-if "point_bank" not in st.session_state:
-    st.session_state.point_bank = 1
 
 @st.cache_data
 def load_course_db():
@@ -83,35 +81,24 @@ def load_players():
 course_df = load_course_db()
 all_players = load_players()
 
-params = st.query_params
-if "game_id" in params:
-    game_id_param = params["game_id"][0]
-    st.session_state.mode = "隊員查看比賽"
-    st.session_state.current_game_id = game_id_param
+mode = st.session_state.mode
 
-if st.session_state.mode:
-    mode = st.session_state.mode
-else:
-    mode = st.sidebar.radio("選擇模式", ["建立新比賽", "主控端成績輸入", "隊員查看比賽", "歷史紀錄管理"])
-
-
-if mode == "建立新比賽":
-    st.info("請選擇參賽球員（最多4位），選滿後會自動進入設定畫面")
-
-    game_id = str(uuid.uuid4())[:8]
-    st.success(f"✅ 新比賽ID：{game_id}")
-
-    player_names = st.multiselect("選擇參賽球員（最多4位）", all_players)
-
+if mode == "選擇參賽球員":
+    st.header("👥 選擇參賽球員（最多4位）")
+    player_names = st.multiselect("選擇球員", all_players, key="player_select")
     if len(player_names) > 4:
         st.error("⚠️ 最多只能選擇4位球員參賽")
-        st.stop()
-    if len(player_names) < 2:
-        st.warning("請至少選擇2位球員進行比賽")
-        st.stop()
+    elif len(player_names) == 4:
+        st.success("✅ 已選擇4位球員")
+        st.session_state.selected_players = player_names
+        st.session_state.mode = "設定比賽資料"
+        st.rerun()
 
-    st.markdown("**球員差點設定：**")
-    handicaps = {p: st.number_input(f"{p} 差點", 0, 54, 0) for p in player_names}
+elif mode == "設定比賽資料":
+    st.header("📋 比賽設定")
+
+    player_names = st.session_state.selected_players
+    handicaps = {p: st.number_input(f"{p} 差點", 0, 54, 0, key=f"hdcp_{p}") for p in player_names}
 
     selected_course = st.selectbox("選擇球場名稱", course_df["course_name"].unique())
     areas_df = course_df[course_df["course_name"] == selected_course]
@@ -121,25 +108,22 @@ if mode == "建立新比賽":
         .unique()
     )
 
-    if len(valid_areas) < 2:
-        st.warning("⚠️ 此球場沒有兩組完整的9洞區域，請檢查資料")
-        st.stop()
-
-    area_front9 = st.selectbox("選擇前九洞區域", valid_areas, key="front9")
-    area_back9 = st.selectbox("選擇後九洞區域", valid_areas, key="back9")
+    area_front9 = st.selectbox("前九洞區域", valid_areas, key="front9")
+    area_back9 = st.selectbox("後九洞區域", valid_areas, key="back9")
 
     front9 = areas_df[areas_df["area"] == area_front9].sort_values("hole")
     back9 = areas_df[areas_df["area"] == area_back9].sort_values("hole")
 
     if len(front9) != 9 or len(back9) != 9:
-        st.error("⚠️ 選擇的區域不是完整9洞，請確認 course_db.csv 資料正確")
+        st.error("⚠️ 選擇的區域不是完整9洞，請確認資料正確")
         st.stop()
 
     par = front9["par"].tolist() + back9["par"].tolist()
     hcp = front9["hcp"].tolist() + back9["hcp"].tolist()
     bet_per_person = st.number_input("單人賭金", 10, 1000, 100)
 
-    if st.button("✅ 建立比賽"):
+    if st.button("✅ 開始球局"):
+        game_id = str(uuid.uuid4())[:8]
         game_data = {
             "game_id": game_id,
             "players": player_names,
@@ -155,8 +139,42 @@ if mode == "建立新比賽":
             "completed": 0
         }
         save_game_to_drive(game_data, game_id)
-        st.session_state.mode = "主控端成績輸入"
         st.session_state.current_game_id = game_id
+        st.session_state.mode = "主控端成績輸入"
         st.rerun()
 
-st.caption("Golf BANK v3.1 System © 2024")
+elif mode == "主控端成績輸入":
+    game_id = st.session_state.current_game_id
+    game_data = load_game_from_drive(game_id)
+
+    if not game_data:
+        st.error("⚠️ 找不到該比賽資料")
+        st.stop()
+
+    current_hole = game_data['completed']
+    if current_hole >= 18:
+        st.success("🏁 比賽已完成！")
+        st.write(game_data["hole_logs"])
+        st.stop()
+
+    st.subheader(f"🎯 第 {current_hole + 1} 洞輸入")
+    par = game_data["par"][current_hole]
+    hcp = game_data["hcp"][current_hole]
+    st.markdown(f"Par: {par} / HCP: {hcp}")
+
+    scores = {}
+    cols = st.columns(len(game_data["players"]))
+    for idx, p in enumerate(game_data["players"]):
+        with cols[idx]:
+            scores[p] = st.number_input(f"{p}", 1, 15, key=f"score_{p}_{current_hole}")
+
+    if st.button("✅ 確認第{}洞成績".format(current_hole + 1)):
+        for p in game_data["players"]:
+            game_data["scores"][p][str(current_hole)] = scores[p]
+
+        game_data["hole_logs"].append(f"Hole {current_hole + 1} 完成")
+        game_data["completed"] += 1
+        save_game_to_drive(game_data, game_id)
+        st.rerun()
+
+st.caption("Golf BANK v3.2 三段式流程版")
