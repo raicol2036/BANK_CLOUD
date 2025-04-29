@@ -26,7 +26,7 @@ drive_service = connect_drive()
 # === 小工具 Functions ===
 def save_game_to_drive(game_data, game_id):
     from googleapiclient.http import MediaInMemoryUpload
-    query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
+    query = f"(name='game_{game_id}.json') and ('{GAMES_FOLDER_ID}' in parents) and (trashed=false)"
     results = drive_service.files().list(q=query, spaces='drive').execute()
     items = results.get('files', [])
     media = MediaInMemoryUpload(json.dumps(game_data, ensure_ascii=False, indent=2).encode(), mimetype='application/json')
