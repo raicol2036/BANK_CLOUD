@@ -25,7 +25,7 @@ drive_service = connect_drive()
 @st.cache_resource
 def create_or_get_folder():
     query = "mimeType='application/vnd.google-apps.folder' and name='GolfBank_Folder' and trashed=false"
-    results = drive_service.files().list(q=query, spaces='drive').execute()
+    results = drive_service.files().list(q=query, spaces='drive', supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
     items = results.get('files', [])
     if items:
         return items[0]['id']
@@ -34,7 +34,7 @@ def create_or_get_folder():
             'name': 'GolfBank_Folder',
             'mimeType': 'application/vnd.google-apps.folder'
         }
-        file = drive_service.files().create(body=file_metadata, fields='id').execute()
+        file = drive_service.files().create(body=file_metadata, fields='id', supportsAllDrives=True).execute()
         return file.get('id')
 
 GAMES_FOLDER_ID = create_or_get_folder()
