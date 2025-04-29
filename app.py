@@ -94,7 +94,10 @@ if st.session_state.mode:
 else:
     mode = st.sidebar.radio("選擇模式", ["建立新比賽", "主控端成績輸入", "隊員查看比賽", "歷史紀錄管理"])
 
+
 if mode == "建立新比賽":
+    st.info("請選擇參賽球員（最多4位），選滿後會自動進入設定畫面")
+
     game_id = str(uuid.uuid4())[:8]
     st.success(f"✅ 新比賽ID：{game_id}")
 
@@ -156,21 +159,4 @@ if mode == "建立新比賽":
         st.session_state.current_game_id = game_id
         st.rerun()
 
-
-elif mode == "主控端成績輸入":
-    game_id = st.session_state.current_game_id
-    game_data = load_game_from_drive(game_id)
-
-    if not game_data:
-        st.error("⚠️ 找不到該比賽資料")
-        st.stop()
-
-    st.subheader(f"📋 比賽ID：{game_data['game_id']}")
-    st.markdown("### ⛳ 比賽球員")
-    for p in game_data["players"]:
-        st.markdown(f"- {p}（差點 {game_data['handicaps'][p]}）")
-
-    st.markdown("🚧 成績輸入介面建置中...")
-
 st.caption("Golf BANK v3.1 System © 2024")
-
