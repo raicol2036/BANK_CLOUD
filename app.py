@@ -69,7 +69,7 @@ if "mode" not in st.session_state:
 if "current_game_id" not in st.session_state:
     st.session_state.current_game_id = ""
 
-params = st.query_params
+params = st.experimental_get_query_params()
 if "game_id" in params:
     game_id_param = params["game_id"][0]
     st.session_state.mode = "隊員查看比賽"
