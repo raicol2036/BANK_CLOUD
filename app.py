@@ -88,9 +88,13 @@ player_names = st.multiselect("選擇參賽球員（最多4位）", all_players)
 if len(player_names) > 4:
     st.error("⚠️ 最多只能選擇4位球員參賽")
     st.stop()
+else:
+    handicaps = {p: st.number_input(f"{p} 差點", 0, 54, 0) for p in player_names}
 elif len(player_names) < 2:
     st.warning("請至少選擇2位球員進行比賽")
     st.stop()
+else:
+    handicaps = {p: st.number_input(f"{p} 差點", 0, 54, 0) for p in player_names}
 
 params = st.query_params
 if "game_id" in params:
@@ -120,6 +124,8 @@ if mode == "建立新比賽":
     if len(valid_areas) < 2:
         st.warning("⚠️ 此球場沒有兩組完整的9洞區域，請檢查資料")
         st.stop()
+else:
+    handicaps = {p: st.number_input(f"{p} 差點", 0, 54, 0) for p in player_names}
 
     area_front9 = st.selectbox("選擇前九洞區域", valid_areas, key="front9")
     area_back9 = st.selectbox("選擇後九洞區域", valid_areas, key="back9")
@@ -130,6 +136,8 @@ if mode == "建立新比賽":
     if len(front9) != 9 or len(back9) != 9:
         st.error("⚠️ 選擇的區域不是完整9洞，請確認 course_db.csv 資料正確")
         st.stop()
+else:
+    handicaps = {p: st.number_input(f"{p} 差點", 0, 54, 0) for p in player_names}
 
     par = front9["par"].tolist() + back9["par"].tolist()
     hcp = front9["hcp"].tolist() + back9["hcp"].tolist()
@@ -159,3 +167,4 @@ if mode == "建立新比賽":
         st.rerun()
 
 st.caption("Golf BANK v3.1 System © 2024")
+
