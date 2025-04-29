@@ -8,7 +8,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 # === Google Drive 連接 ===
-GAMES_FOLDER_ID = "1G2VWwDHOHhnOKBNdnlut1oG5BOoUYAuf"  # 你的Google Drive資料夾ID
+GAMES_FOLDER_ID = "1G2VWwDHOHhnOKBNdnlut1oG5BOoUYAuf"
 
 @st.cache_resource
 def connect_drive():
@@ -26,31 +26,24 @@ drive_service = connect_drive()
 # === 小工具 Functions ===
 def save_game_to_drive(game_data, game_id):
     from googleapiclient.http import MediaInMemoryUpload
-    query = f"(name='game_{game_id}.json') and ('{GAMES_FOLDER_ID}' in parents) and (trashed=false)"
-    results = drive_service.files().list(q=query, spaces='drive').execute()
-    items = results.get('files', [])
+    file_metadata = {
+        'name': f'game_{game_id}.json',
+        'parents': [GAMES_FOLDER_ID]
+    }
     media = MediaInMemoryUpload(json.dumps(game_data, ensure_ascii=False, indent=2).encode(), mimetype='application/json')
-    if items:
-        file_id = items[0]['id']
-        drive_service.files().update(fileId=file_id, media_body=media).execute()
-    else:
-        file_metadata = {'name': f'game_{game_id}.json', 'parents': [GAMES_FOLDER_ID]}
-        drive_service.files().create(body=file_metadata, media_body=media).execute()
+    drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+
 
 def load_game_from_drive(game_id):
     query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
-    results = drive_service.files().list(q=query, spaces='drive').execute()
-    items = results.get('files', [])
+    result = drive_service.files().list(q=query, spaces='drive').execute()
+    items = result.get('files', [])
     if not items:
         return None
     file_id = items[0]['id']
     file = drive_service.files().get_media(fileId=file_id).execute()
     return json.loads(file)
 
-def list_all_games():
-    query = f"'{GAMES_FOLDER_ID}' in parents and trashed=false"
-    results = drive_service.files().list(q=query, spaces='drive').execute()
-    return results.get('files', [])
 
 def generate_qr(url):
     img = qrcode.make(url)
@@ -62,7 +55,7 @@ def generate_qr(url):
 st.set_page_config(page_title="🏌️ Golf BANK System", layout="wide")
 st.title("🏌️ Golf BANK 系統")
 
-mode = st.sidebar.radio("選擇模式", ["建立新比賽", "主控端成績輸入", "隊員查看比賽", "歷史紀錄管理"])
+mode = st.sidebar.radio("選擇模式", ["建立新比賽", "主控端成績輸入", "隊員查看比賽"])
 
 # === 建立新比賽 ===
 if mode == "建立新比賽":
@@ -93,7 +86,7 @@ if mode == "建立新比賽":
             "completed": 0
         }
         save_game_to_drive(game_data, game_id)
-        st.success("✅ 比賽已建立成功！")
+        st.success("✅ 比賽已建立並儲存到Google Drive！")
 
         base_url = st.text_input("查看用 Base URL", "https://你的網址")
         view_url = f"{base_url}?game_id={game_id}"
@@ -121,7 +114,7 @@ elif mode == "主控端成績輸入":
             if st.button(f"✅ 確認第{i+1}洞", key=f"confirm_{i}"):
                 game_data['completed'] += 1
                 save_game_to_drive(game_data, game_id)
-                st.success("✅ 已同步！")
+                st.success("✅ 已同步到Google Drive！")
 
 # === 隊員查看比賽 ===
 elif mode == "隊員查看比賽":
@@ -139,13 +132,5 @@ elif mode == "隊員查看比賽":
             st.subheader("📖 洞別Log")
             for log in game_data['hole_logs']:
                 st.markdown(f"- {log}")
-
-# === 歷史紀錄管理 ===
-elif mode == "歷史紀錄管理":
-    files = list_all_games()
-    game_list = [f["name"].replace("game_", "").replace(".json", "") for f in files]
-    selected_game = st.selectbox("選擇要查看的比賽", game_list)
-    if selected_game:
-        st.info(f"你選擇了比賽 ID: {selected_game}")
 
 st.caption("Golf BANK System © 2024")
