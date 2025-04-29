@@ -8,7 +8,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 # === Google Drive 連接 ===
-GAMES_FOLDER_ID = "1G2VWwDHOHhnOKBNdnlut1oG5BOoUYAuf?hl=zh-TW"  # 你的Google Drive資料夾ID
+GAMES_FOLDER_ID = "1G2VWwDHOHhnOKBNdnlut1oG5BOoUYAuf"  # 你的Google Drive資料夾ID
 
 @st.cache_resource
 def connect_drive():
