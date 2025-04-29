@@ -13,8 +13,7 @@ BASE_URL = "https://bankcloud-ctk4bhakw7fro8k3wmpava.streamlit.app/"
 def connect_drive():
     raw_secrets = st.secrets["gdrive"]
     secrets_dict = dict(raw_secrets)
-    secrets_dict["private_key"] = secrets_dict["private_key"].replace("\\n", "\n").replace("\n", "
-")
+    secrets_dict["private_key"] = secrets_dict["private_key"].replace("\\n", "\n")
     credentials = service_account.Credentials.from_service_account_info(
         secrets_dict,
         scopes=["https://www.googleapis.com/auth/drive"]
