@@ -1,4 +1,4 @@
-# Golf BANK v3.3 首頁邏輯整合：新增開始新比賽按鈕 + 初始化畫面保護
+
 import streamlit as st
 import pandas as pd
 import json
@@ -19,7 +19,7 @@ st.title("🏌️ Golf BANK 系統")
 def connect_drive():
     raw_secrets = st.secrets["gdrive"]
     secrets_dict = dict(raw_secrets)
-    secrets_dict["private_key"] = secrets_dict["private_key"].replace("\\n", "\n")
+    secrets_dict["private_key"] = secrets_dict["private_key"].replace("\n", "\n")
     credentials = service_account.Credentials.from_service_account_info(
         secrets_dict,
         scopes=["https://www.googleapis.com/auth/drive"]
@@ -100,89 +100,6 @@ if "current_game_id" not in st.session_state or not st.session_state.current_gam
     st.warning("⚠️ 尚未建立比賽，請先從首頁建立新比賽")
     st.stop()
 
-# 👉 其餘內容保持不變，繼續接續主控端畫面邏輯 ...
-
-
-BASE_URL = "https://bankcloud-ctk4bhakw7fro8k3wmpava.streamlit.app/"
-
-st.set_page_config(page_title="🏌️ Golf BANK v3.3", layout="wide")
-st.title("🏌️ Golf BANK 系統")
-
-@st.cache_resource
-def connect_drive():
-    raw_secrets = st.secrets["gdrive"]
-    secrets_dict = dict(raw_secrets)
-    secrets_dict["private_key"] = secrets_dict["private_key"].replace("\\n", "\n")
-    credentials = service_account.Credentials.from_service_account_info(
-        secrets_dict,
-        scopes=["https://www.googleapis.com/auth/drive"]
-    )
-    return build('drive', 'v3', credentials=credentials)
-
-drive_service = connect_drive()
-
-@st.cache_resource
-def create_or_get_folder():
-    query = "mimeType='application/vnd.google-apps.folder' and name='GolfBank_Folder' and trashed=false"
-    results = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-    items = results.get('files', [])
-    if items:
-        return items[0]['id']
-    else:
-        file_metadata = {
-            'name': 'GolfBank_Folder',
-            'mimeType': 'application/vnd.google-apps.folder'
-        }
-        file = drive_service.files().create(body=file_metadata, fields='id', supportsAllDrives=True).execute()
-        return file.get('id')
-
-GAMES_FOLDER_ID = create_or_get_folder()
-
-def save_game_to_drive(game_data, game_id):
-    file_metadata = {'name': f'game_{game_id}.json', 'parents': [GAMES_FOLDER_ID]}
-    content = io.BytesIO(json.dumps(game_data, ensure_ascii=False, indent=2).encode("utf-8"))
-    media = MediaIoBaseUpload(content, mimetype='application/json')
-
-    query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
-    result = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-    items = result.get('files', [])
-
-    if items:
-        file_id = items[0]['id']
-        drive_service.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
-    else:
-        drive_service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
-
-def load_game_from_drive(game_id):
-    query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
-    result = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-    items = result.get('files', [])
-    if not items:
-        return None
-    file_id = items[0]['id']
-    file = drive_service.files().get_media(fileId=file_id).execute()
-    return json.loads(file)
-
-def generate_qr(url):
-    img = qrcode.make(url)
-    buf = BytesIO()
-    img.save(buf)
-    return buf
-
-@st.cache_data
-def load_course_db():
-    return pd.read_csv("course_db.csv")
-
-@st.cache_data
-def load_players():
-    df = pd.read_csv("players.csv")
-    return df["name"].dropna().tolist()
-
-if "mode" not in st.session_state:
-    st.session_state.mode = "主控端成績輸入"
-if "current_game_id" not in st.session_state:
-    st.stop()
-
 course_df = load_course_db()
 game_id = st.session_state.current_game_id
 game_data = load_game_from_drive(game_id)
@@ -231,7 +148,6 @@ if new_bet != game_data["bet_per_person"]:
     game_data["bet_per_person"] = new_bet
     save_game_to_drive(game_data, game_id)
 
-# ========== 🎯 每洞輸入邏輯 ==========
 current_hole = game_data['completed']
 if current_hole >= 18:
     st.success("🏁 比賽已完成！")
