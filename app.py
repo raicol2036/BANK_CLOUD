@@ -1,9 +1,25 @@
-
 import streamlit as st
 import pandas as pd
 import os
+import json
+import uuid
+import qrcode
+from io import BytesIO
+from pydrive2.auth import GoogleAuth
+from pydrive2.drive import GoogleDrive
+from oauth2client.service_account import ServiceAccountCredentials
 
-# --- 初始化資料 ---
+# --- Google Drive 設定 ---
+GAMES_FOLDER_ID = "1G2VWwDHOHhnOKBNdnlut1oG5BOoUYAuf"
+SERVICE_ACCOUNT_FILE = "service_account.json"
+
+# --- 初始化 ---
+gauth = GoogleAuth()
+gauth.LoadServiceConfigSettings()
+gauth.ServiceAuth()
+drive = GoogleDrive(gauth)
+
+# --- 常數設定 ---
 CSV_PATH = "players.csv"
 COURSE_DB_PATH = "course_db.csv"
 
@@ -24,172 +40,146 @@ st.set_page_config(page_title="🏌️ 高爾夫BANK系統", layout="wide")
 st.title("🏌️ 高爾夫BANK系統")
 
 # --- 模式選擇 ---
-mode = st.radio("選擇模式", ["主控操作端", "隊員查看端"])
+mode = st.radio("選擇模式", ["建立新比賽", "主控端成績輸入", "隊員查看比賽"])
 
-# --- 球場選擇 ---
-course_options = course_df["course_name"].unique().tolist()
-area_options = course_df["area"].unique().tolist()
+# --- Functions ---
+def save_game_to_drive(game_data, game_id):
+    file_list = drive.ListFile({'q': f"'{GAMES_FOLDER_ID}' in parents and trashed=false and title='game_{game_id}.json'"}).GetList()
+    if file_list:
+        f = file_list[0]
+    else:
+        f = drive.CreateFile({'title': f"game_{game_id}.json", 'parents': [{'id': GAMES_FOLDER_ID}]})
+    f.SetContentString(json.dumps(game_data, ensure_ascii=False, indent=2))
+    f.Upload()
 
-front_course = st.selectbox("前九洞球場", [f"{c}-{a}" for c in course_options for a in area_options], key="front")
-back_course = st.selectbox("後九洞球場", [f"{c}-{a}" for c in course_options for a in area_options], key="back")
+def load_game_from_drive(game_id):
+    file_list = drive.ListFile({'q': f"'{GAMES_FOLDER_ID}' in parents and trashed=false and title='game_{game_id}.json'"}).GetList()
+    if not file_list:
+        return None
+    f = file_list[0]
+    content = f.GetContentString()
+    return json.loads(content)
 
-def get_course_info(selection):
-    cname, area = selection.split("-")
-    temp = course_df[(course_df["course_name"] == cname) & (course_df["area"] == area)]
-    temp = temp.sort_values("hole")
-    return temp["par"].tolist(), temp["hcp"].tolist()
+def generate_qr(url):
+    img = qrcode.make(url)
+    buf = BytesIO()
+    img.save(buf)
+    return buf
 
-front_par, front_hcp = get_course_info(front_course)
-back_par, back_hcp = get_course_info(back_course)
+# --- 建立新比賽 ---
+if mode == "建立新比賽":
+    game_id = str(uuid.uuid4())[:8]
+    st.success(f"✅ 新比賽ID：{game_id}")
+    
+    course_options = course_df["course_name"].unique().tolist()
+    area_options = course_df["area"].unique().tolist()
 
-par = front_par + back_par
-hcp = front_hcp + back_hcp
+    front_course = st.selectbox("前九洞球場", [f"{c}-{a}" for c in course_options for a in area_options], key="front")
+    back_course = st.selectbox("後九洞球場", [f"{c}-{a}" for c in course_options for a in area_options], key="back")
 
-# --- 球員設定 ---
-players = st.multiselect("選擇參賽球員（最多4位）", st.session_state.players, max_selections=4)
+    def get_course_info(selection):
+        cname, area = selection.split("-")
+        temp = course_df[(course_df["course_name"] == cname) & (course_df["area"] == area)]
+        temp = temp.sort_values("hole")
+        return temp["par"].tolist(), temp["hcp"].tolist()
 
-new = st.text_input("新增球員")
-if new:
-    if new not in st.session_state.players:
-        st.session_state.players.append(new)
-        pd.DataFrame({"name": st.session_state.players}).to_csv(CSV_PATH, index=False)
-        st.success(f"✅ 已新增球員 {new} 至資料庫")
-    if new not in players and len(players) < 4:
-        players.append(new)
+    front_par, front_hcp = get_course_info(front_course)
+    back_par, back_hcp = get_course_info(back_course)
 
-if len(players) == 0:
-    st.warning("⚠️ 請先選擇至少一位球員")
-    st.stop()
+    par = front_par + back_par
+    hcp = back_hcp + back_hcp
 
-handicaps = {p: st.number_input(f"{p} 差點", 0, 54, 0, key=f"hcp_{p}") for p in players}
-bet_per_person = st.number_input("單局賭金（每人）", 10, 1000, 100)
+    players = st.multiselect("選擇參賽球員（最多4位）", st.session_state.players, max_selections=4)
 
-# --- 遊戲初始化 ---
-scores = pd.DataFrame(index=players, columns=[f"第{i+1}洞" for i in range(18)])
-events = pd.DataFrame(index=players, columns=[f"第{i+1}洞" for i in range(18)])
-event_opts_display = ["下沙", "下水", "OB", "丟球", "加3或3推", "Par on"]
-event_translate = {"下沙": "sand", "下水": "water", "OB": "ob", "丟球": "miss", "加3或3推": "3putt_or_plus3", "Par on": "par_on"}
-penalty_keywords = ["sand", "water", "ob", "miss", "3putt_or_plus3"]
+    new = st.text_input("新增球員")
+    if new:
+        if new not in st.session_state.players:
+            st.session_state.players.append(new)
+            pd.DataFrame({"name": st.session_state.players}).to_csv(CSV_PATH, index=False)
+            st.success(f"✅ 已新增球員 {new} 至資料庫")
 
-running_points = {p: 0 for p in players}
-current_titles = {p: "" for p in players}
-hole_logs = []
-point_bank = 1
+    if len(players) == 0:
+        st.warning("⚠️ 請先選擇至少一位球員")
+        st.stop()
 
-# --- 主流程 ---
-for i in range(18):
-    if mode == "隊員查看端" and not (f"confirm_{i}" in st.session_state and st.session_state[f"confirm_{i}"]):
-        continue
+    handicaps = {p: st.number_input(f"{p} 差點", 0, 54, 0, key=f"hcp_{p}") for p in players}
+    bet_per_person = st.number_input("單局賭金（每人）", 10, 1000, 100)
 
-    st.subheader(f"第{i+1}洞 (Par {par[i]} / HCP {hcp[i]})")
+    game_data = {
+        "game_id": game_id,
+        "players": players,
+        "handicaps": handicaps,
+        "par": par,
+        "hcp": hcp,
+        "front_course": front_course,
+        "back_course": back_course,
+        "bet_per_person": bet_per_person,
+        "scores": {},
+        "events": {},
+        "running_points": {p: 0 for p in players},
+        "current_titles": {p: "" for p in players},
+        "hole_logs": [],
+        "completed": 0
+    }
 
-    if mode == "主控操作端":
-        cols = st.columns(len(players))
-        for j, p in enumerate(players):
-            with cols[j]:
-                if current_titles[p] == "SuperRich":
-                    st.markdown("👑 **Super Rich Man**")
-                elif current_titles[p] == "Rich":
-                    st.markdown("🏆 **Rich Man**")
-                scores.loc[p, f"第{i+1}洞"] = st.number_input(f"{p} 桿數（{running_points[p]} 點）", 1, 15, par[i], key=f"score_{p}_{i}")
-                selected_display = st.multiselect(f"{p} 事件", event_opts_display, key=f"event_{p}_{i}")
-                selected_internal = [event_translate[d] for d in selected_display]
-                events.loc[p, f"第{i+1}洞"] = selected_internal
+    save_game_to_drive(game_data, game_id)
 
-        confirmed = st.checkbox(f"✅ 確認第{i+1}洞成績", key=f"confirm_{i}")
-        if not confirmed:
-            continue
+    st.success("✅ 比賽已建立，請複製以下 ID 給隊員！")
+    st.code(game_id)
 
-    if f"confirm_{i}" in st.session_state and st.session_state[f"confirm_{i}"]:
-        raw = scores[f"第{i+1}洞"]
-        evt = events[f"第{i+1}洞"]
-        start_of_hole_bank = point_bank
+    base_url = st.text_input("輸入查看頁面 Base URL", "https://你的網站/查看")
+    view_url = f"{base_url}?game_id={game_id}"
+    buf = generate_qr(view_url)
+    st.image(buf)
 
-        event_penalties = {p: 0 for p in players}
-        for p in players:
-            acts = evt[p] if isinstance(evt[p], list) else []
-            pen = 0
-            if current_titles[p] in ["Rich", "SuperRich"]:
-                pen = sum(1 for act in acts if act in penalty_keywords)
-                if current_titles[p] == "SuperRich" and "par_on" in acts:
-                    pen += 1
-                pen = min(pen, 3)
-            running_points[p] -= pen
-            event_penalties[p] = pen
+# --- 主控端成績輸入 ---
+elif mode == "主控端成績輸入":
+    game_id = st.text_input("輸入比賽ID")
+    if game_id:
+        game_data = load_game_from_drive(game_id)
+        if not game_data:
+            st.error("找不到該比賽資料！")
+            st.stop()
 
-        victory_map = {}
-        for p1 in players:
-            p1_wins = 0
-            for p2 in players:
-                if p1 == p2:
-                    continue
-                adj_p1, adj_p2 = raw[p1], raw[p2]
-                diff = handicaps[p1] - handicaps[p2]
-                if diff > 0 and hcp[i] <= diff:
-                    adj_p1 -= 1
-                elif diff < 0 and hcp[i] <= -diff:
-                    adj_p2 -= 1
-                if adj_p1 < adj_p2:
-                    p1_wins += 1
-            victory_map[p1] = p1_wins
+        st.subheader(f"比賽：{game_data['front_course']} ➔ {game_data['back_course']}")
+        players = game_data['players']
 
-        winners = [p for p in players if victory_map[p] == len(players) - 1]
-        total_penalty_this_hole = sum(event_penalties.values())
+        for i in range(18):
+            st.markdown(f"## 第{i+1}洞")
+            if f"confirm_{i}" not in st.session_state:
+                st.session_state[f"confirm_{i}"] = False
 
-        penalty_info = []
-        for p in players:
-            if event_penalties[p] > 0:
-                penalty_info.append(f"{p} 扣 {event_penalties[p]}點")
-        penalty_summary = "｜".join(penalty_info) if penalty_info else ""
-
-        if len(winners) == 1:
-            w = winners[0]
-            is_birdy = raw[w] <= par[i] - 1
-            bird_icon = " 🐦" if is_birdy else ""
-            gain_points = point_bank
-            if is_birdy:
+            if not st.session_state[f"confirm_{i}"]:
                 for p in players:
-                    if p != w and running_points[p] > 0:
-                        running_points[p] -= 1
-                        gain_points += 1
-            running_points[w] += gain_points
-            hole_log = f"🏆 第{i+1}洞勝者：{w}{bird_icon}（取得+{gain_points}點）{('｜' + penalty_summary) if penalty_summary else ''}"
-            point_bank = 1
-        else:
-            add_this_hole = 1 + total_penalty_this_hole
-            bank_after_this_hole = start_of_hole_bank + add_this_hole
-            hole_log = f"⚖️ 第{i+1}洞平手{('｜' + penalty_summary) if penalty_summary else ''}（下洞累積 {bank_after_this_hole}點）"
-            point_bank = bank_after_this_hole
-
-        st.markdown(hole_log)
-        hole_logs.append(hole_log)
-
-        for p in players:
-            if current_titles[p] == "SuperRich":
-                if running_points[p] <= 4:
-                    current_titles[p] = "Rich"
-            elif current_titles[p] == "Rich":
-                if running_points[p] == 0:
-                    current_titles[p] = ""
+                    score = st.number_input(f"{p} 桿數", min_value=1, max_value=15, key=f"score_{p}_{i}")
+                    event = st.multiselect(f"{p} 特殊事件", ["OB", "下水", "下沙", "3推"], key=f"event_{p}_{i}")
+                    game_data['scores'].setdefault(p, {})[str(i)] = score
+                    game_data['events'].setdefault(p, {})[str(i)] = event
+                if st.button(f"✅ 確認第{i+1}洞成績", key=f"btn_{i}"):
+                    st.session_state[f"confirm_{i}"] = True
+                    save_game_to_drive(game_data, game_id)
             else:
-                if running_points[p] >= 8:
-                    current_titles[p] = "SuperRich"
-                elif running_points[p] >= 4:
-                    current_titles[p] = "Rich"
-                else:
-                    current_titles[p] = ""
+                st.success(f"✅ 第{i+1}洞已確認")
 
-# --- 總結結果 ---
-st.subheader("📊 總結結果")
-total_bet = bet_per_person * len(players)
-completed = len([i for i in range(18) if st.session_state.get(f"confirm_{i}", False)])
-result = pd.DataFrame({
-    "總點數": [running_points[p] for p in players],
-    "賭金結果": [running_points[p] * total_bet - completed * bet_per_person for p in players],
-    "頭銜": [current_titles[p] for p in players]
-}, index=players).sort_values("賭金結果", ascending=False)
-st.dataframe(result)
+        if all(st.session_state.get(f"confirm_{i}", False) for i in range(18)):
+            st.success("🎉 比賽完成！")
 
-st.subheader("📖 洞別說明 Log")
-for line in hole_logs:
-    st.text(line)
+# --- 隊員查看比賽 ---
+elif mode == "隊員查看比賽":
+    game_id = st.text_input("輸入比賽ID")
+    if game_id:
+        game_data = load_game_from_drive(game_id)
+        if game_data:
+            st.subheader("📊 總結結果")
+            players = game_data["players"]
+            result = pd.DataFrame({
+                "總點數": [game_data["running_points"][p] for p in players],
+                "頭銜": [game_data["current_titles"][p] for p in players]
+            }, index=players)
+            st.dataframe(result)
+
+            st.subheader("📖 洞別說明 Log")
+            for line in game_data["hole_logs"]:
+                st.text(line)
+        else:
+            st.error("找不到該比賽資料！")
