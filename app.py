@@ -81,7 +81,16 @@ def load_players():
     return df["name"].dropna().tolist()
 
 course_df = load_course_db()
-player_names = load_players()
+all_players = load_players()
+
+# 使用者選擇球員（最多4位）
+player_names = st.multiselect("選擇參賽球員（最多4位）", all_players)
+if len(player_names) > 4:
+    st.error("⚠️ 最多只能選擇4位球員參賽")
+    st.stop()
+elif len(player_names) < 2:
+    st.warning("請至少選擇2位球員進行比賽")
+    st.stop()
 
 params = st.query_params
 if "game_id" in params:
