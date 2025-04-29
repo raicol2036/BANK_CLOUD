@@ -7,6 +7,9 @@ from io import BytesIO
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
+# 固定 Base URL
+BASE_URL = "https://bankcloud-ctk4bhakw7fro8k3wmpava.streamlit.app/"
+
 # === Google Drive 連接 ===
 @st.cache_resource
 def connect_drive():
@@ -55,12 +58,16 @@ def save_game_to_drive(game_data, game_id):
         'parents': [GAMES_FOLDER_ID]
     }
     media = MediaInMemoryUpload(json.dumps(game_data, ensure_ascii=False, indent=2).encode(), mimetype='application/json')
-    drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    drive_service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
 
 
 def load_game_from_drive(game_id):
     query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
-    result = drive_service.files().list(q=query, spaces='drive').execute()
+    result = drive_service.files().list(
+        q=query,
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
+    ).execute()
     items = result.get('files', [])
     if not items:
         return None
@@ -112,8 +119,7 @@ if mode == "建立新比賽":
         save_game_to_drive(game_data, game_id)
         st.success("✅ 比賽已建立並儲存到Google Drive！")
 
-        base_url = st.text_input("查看用 Base URL", "https://你的網址")
-        view_url = f"{base_url}?game_id={game_id}"
+        view_url = f"{BASE_URL}?game_id={game_id}"
         buf = generate_qr(view_url)
         st.image(buf)
 
