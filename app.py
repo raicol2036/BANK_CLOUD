@@ -61,15 +61,17 @@ def generate_qr(url):
     img.save(buf)
     return buf
 
-st.set_page_config(page_title="🏌️ Golf BANK v3.0", layout="wide")
-st.title("🏌️ Golf BANK 系統")
+st.set_page_config(page_title="\ud83c\udfc9 Golf BANK v3.0", layout="wide")
+st.title("\ud83c\udfc9 Golf BANK \u7cfb\u7d71")
 
 if "mode" not in st.session_state:
     st.session_state.mode = None
 if "current_game_id" not in st.session_state:
     st.session_state.current_game_id = ""
+if "point_bank" not in st.session_state:
+    st.session_state.point_bank = 1
 
-params = st.experimental_get_query_params()
+params = st.query_params
 if "game_id" in params:
     game_id_param = params["game_id"][0]
     st.session_state.mode = "隊員查看比賽"
@@ -141,7 +143,6 @@ elif mode == "主控端成績輸入":
         hcp = game_data['hcp']
         running_points = game_data['running_points']
         hole_logs = game_data['hole_logs']
-        point_bank = 1
 
         for i in range(18):
             st.subheader(f"第{i+1}洞（Par {par[i]}，HCP {hcp[i]}）")
@@ -177,12 +178,12 @@ elif mode == "主控端成績輸入":
 
                 if winners:
                     w = winners[0]
-                    running_points[w] += point_bank
-                    hole_logs.append(f"🏆 第{i+1}洞勝者：{w}（得 {point_bank} 點）")
-                    point_bank = 1
+                    running_points[w] += st.session_state.point_bank
+                    hole_logs.append(f"🏆 第{i+1}洞勝者：{w}（得 {st.session_state.point_bank} 點）")
+                    st.session_state.point_bank = 1
                 else:
-                    point_bank += 1
-                    hole_logs.append(f"⚖️ 第{i+1}洞平手（累積 {point_bank} 點）")
+                    st.session_state.point_bank += 1
+                    hole_logs.append(f"⚖️ 第{i+1}洞平手（累積 {st.session_state.point_bank} 點）")
 
                 game_data['running_points'] = running_points
                 game_data['hole_logs'] = hole_logs
@@ -232,4 +233,4 @@ elif mode == "歷史紀錄管理":
             for log in game_data['hole_logs']:
                 st.markdown(f"- {log}")
 
-st.caption("Golf BANK v3.0 System © 2024")
+st.caption("Golf BANK v3.0 System \u00a9 2024")
