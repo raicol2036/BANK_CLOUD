@@ -166,9 +166,14 @@ elif mode == "主控端成績輸入":
     cols = st.columns(len(game_data["players"]))
     for idx, p in enumerate(game_data["players"]):
         with cols[idx]:
-            scores[p] = st.number_input(f"{p}", 1, 15, key=f"score_{p}_{current_hole}")
+            scores[p] = st.number_input(f"{p}", 1, 15, key=f"score_{p}_{current_hole}_input")
 
+    
     if st.button("✅ 確認第{}洞成績".format(current_hole + 1)):
+        if not all(p in scores for p in game_data["players"]):
+            st.error("❌ 成績輸入不完整")
+            st.stop()
+
         for p in game_data["players"]:
             game_data["scores"][p][str(current_hole)] = scores[p]
 
