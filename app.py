@@ -7,10 +7,8 @@ from io import BytesIO
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# 固定 Base URL
 BASE_URL = "https://bankcloud-ctk4bhakw7fro8k3wmpava.streamlit.app/"
 
-# === Google Drive 連接 ===
 @st.cache_resource
 def connect_drive():
     raw_secrets = st.secrets["gdrive"]
@@ -24,7 +22,6 @@ def connect_drive():
 
 drive_service = connect_drive()
 
-# === 自動建立資料夾 ===
 @st.cache_resource
 def create_or_get_folder():
     query = "mimeType='application/vnd.google-apps.folder' and name='GolfBank_Folder' and trashed=false"
@@ -42,7 +39,6 @@ def create_or_get_folder():
 
 GAMES_FOLDER_ID = create_or_get_folder()
 
-# === 工具 Functions ===
 def save_game_to_drive(game_data, game_id):
     from googleapiclient.http import MediaInMemoryUpload
     file_metadata = {'name': f'game_{game_id}.json', 'parents': [GAMES_FOLDER_ID]}
@@ -65,11 +61,24 @@ def generate_qr(url):
     img.save(buf)
     return buf
 
-# === 主畫面 ===
-st.set_page_config(page_title="🏌️ Golf BANK System", layout="wide")
+st.set_page_config(page_title="🏌️ Golf BANK v3.0", layout="wide")
 st.title("🏌️ Golf BANK 系統")
 
-mode = st.sidebar.radio("選擇模式", ["建立新比賽", "主控端成績輸入", "隊員查看比賽", "歷史紀錄管理"])
+if "mode" not in st.session_state:
+    st.session_state.mode = None
+if "current_game_id" not in st.session_state:
+    st.session_state.current_game_id = ""
+
+params = st.experimental_get_query_params()
+if "game_id" in params:
+    game_id_param = params["game_id"][0]
+    st.session_state.mode = "隊員查看比賽"
+    st.session_state.current_game_id = game_id_param
+
+if st.session_state.mode:
+    mode = st.session_state.mode
+else:
+    mode = st.sidebar.radio("選擇模式", ["建立新比賽", "主控端成績輸入", "隊員查看比賽", "歷史紀錄管理"])
 
 if mode == "建立新比賽":
     game_id = str(uuid.uuid4())[:8]
@@ -99,19 +108,32 @@ if mode == "建立新比賽":
             "completed": 0
         }
         save_game_to_drive(game_data, game_id)
-        st.success("✅ 比賽已建立並儲存到Google Drive！")
-
-        view_url = f"{BASE_URL}?game_id={game_id}"
-        buf = generate_qr(view_url)
-        st.image(buf)
+        st.session_state.mode = "主控端成績輸入"
+        st.session_state.current_game_id = game_id
+        st.rerun()
 
 elif mode == "主控端成績輸入":
-    game_id = st.text_input("輸入比賽ID")
+    if st.session_state.current_game_id:
+        game_id = st.session_state.current_game_id
+    else:
+        game_id = st.text_input("輸入比賽ID")
+
     if game_id:
         game_data = load_game_from_drive(game_id)
         if not game_data:
             st.error("找不到該比賽！")
             st.stop()
+
+        st.subheader(f"📋 目前比賽資訊")
+        st.markdown(f"**比賽ID**：{game_data['game_id']}")
+        st.markdown(f"**參賽球員**：{', '.join(game_data['players'])}")
+        st.markdown("**差點設定**：")
+        for p in game_data["players"]:
+            st.markdown(f"- {p}: {game_data['handicaps'][p]}")
+        st.markdown(f"**單人賭金**：{game_data['bet_per_person']}")
+        view_url = f"{BASE_URL}?game_id={game_data['game_id']}"
+        buf = generate_qr(view_url)
+        st.image(buf, caption="掃描查看比賽進度")
 
         players = game_data['players']
         handicaps = game_data['handicaps']
@@ -132,7 +154,6 @@ elif mode == "主控端成績輸入":
             if st.button(f"✅ 確認第{i+1}洞", key=f"confirm_{i}"):
                 raw_scores = {p: game_data['scores'][p][str(i)] for p in players}
 
-                # 計算調整後桿數
                 adjusted_scores = {}
                 for p1 in players:
                     adj = 0
@@ -170,7 +191,11 @@ elif mode == "主控端成績輸入":
                 st.success("✅ 已同步到Google Drive！")
 
 elif mode == "隊員查看比賽":
-    game_id = st.text_input("輸入比賽ID")
+    if st.session_state.current_game_id:
+        game_id = st.session_state.current_game_id
+    else:
+        game_id = st.text_input("輸入比賽ID")
+
     if game_id:
         game_data = load_game_from_drive(game_id)
         if game_data:
@@ -207,4 +232,4 @@ elif mode == "歷史紀錄管理":
             for log in game_data['hole_logs']:
                 st.markdown(f"- {log}")
 
-st.caption("Golf BANK System © 2024")
+st.caption("Golf BANK v3.0 System © 2024")
