@@ -73,8 +73,7 @@ if "point_bank" not in st.session_state:
 
 @st.cache_data
 def load_course_db():
-    df = pd.read_csv("course_db.csv")
-    return df
+    return pd.read_csv("course_db.csv")
 
 @st.cache_data
 def load_players():
@@ -100,15 +99,27 @@ if mode == "建立新比賽":
     st.success(f"✅ 新比賽ID：{game_id}")
 
     selected_course = st.selectbox("選擇球場名稱", course_df["course_name"].unique())
-    areas = course_df[course_df["course_name"] == selected_course]["area"].unique()
-    area_front9 = st.selectbox("選擇前九洞區域", areas, key="front9")
-    area_back9 = st.selectbox("選擇後九洞區域", areas, key="back9")
 
-    front9 = course_df[(course_df["course_name"] == selected_course) & (course_df["area"] == area_front9) & (course_df["hole"].between(1,9))].sort_values("hole")
-    back9 = course_df[(course_df["course_name"] == selected_course) & (course_df["area"] == area_back9) & (course_df["hole"].between(10,18))].sort_values("hole")
+    # 找出該球場所有區域中，剛好9筆資料的
+    areas_df = course_df[course_df["course_name"] == selected_course]
+    valid_areas = (
+        areas_df.groupby("area")
+        .filter(lambda df: len(df) == 9)["area"]
+        .unique()
+    )
+
+    if len(valid_areas) < 2:
+        st.warning("⚠️ 此球場沒有兩組完整的9洞區域，請檢查資料")
+        st.stop()
+
+    area_front9 = st.selectbox("選擇前九洞區域", valid_areas, key="front9")
+    area_back9 = st.selectbox("選擇後九洞區域", valid_areas, key="back9")
+
+    front9 = areas_df[areas_df["area"] == area_front9].sort_values("hole")
+    back9 = areas_df[areas_df["area"] == area_back9].sort_values("hole")
 
     if len(front9) != 9 or len(back9) != 9:
-        st.error("⚠️ 選擇的球場資料不完整，請檢查 course_db.csv")
+        st.error("⚠️ 選擇的區域不是完整9洞，請確認 course_db.csv 資料正確")
         st.stop()
 
     par = front9["par"].tolist() + back9["par"].tolist()
