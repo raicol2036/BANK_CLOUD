@@ -86,7 +86,7 @@ def generate_qr(url):
 st.set_page_config(page_title="🏌️ Golf BANK System", layout="wide")
 st.title("🏌️ Golf BANK 系統")
 
-mode = st.sidebar.radio("選擇模式", ["建立新比賽", "主控端成績輸入", "隊員查看比賽"])
+mode = st.sidebar.radio("選擇模式", ["建立新比賽", "主控端成績輸入", "隊員查看比賽", "歷史紀錄管理"])
 
 # === 建立新比賽 ===
 if mode == "建立新比賽":
@@ -152,6 +152,33 @@ elif mode == "隊員查看比賽":
     if game_id:
         game_data = load_game_from_drive(game_id)
         if game_data:
+            st.subheader("📊 總結成績")
+            players = game_data['players']
+            result = pd.DataFrame({
+                "總點數": [game_data['running_points'][p] for p in players],
+                "頭銜": [game_data['current_titles'][p] for p in players]
+            }, index=players)
+            st.dataframe(result, use_container_width=True)
+            st.subheader("📖 洞別Log")
+            for log in game_data['hole_logs']:
+                st.markdown(f"- {log}")
+
+# === 歷史紀錄管理 ===
+elif mode == "歷史紀錄管理":
+    query = f"name contains 'game_' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
+    result = drive_service.files().list(
+        q=query,
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True
+    ).execute()
+    items = result.get('files', [])
+    if items:
+        options = {item['name'].replace('game_', '').replace('.json', ''): item['id'] for item in items}
+        selected_game = st.selectbox("選擇要查看的比賽", list(options.keys()))
+        if selected_game:
+            file_id = options[selected_game]
+            file = drive_service.files().get_media(fileId=file_id).execute()
+            game_data = json.loads(file)
             st.subheader("📊 總結成績")
             players = game_data['players']
             result = pd.DataFrame({
