@@ -7,7 +7,7 @@ from io import BytesIO
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-BASE_URL = "https://bankcloud-ctk4bhakw7fro8k3wmpava.streamlit.app/"
+BASE_URL = "https://bankcloud.streamlit.app/"
 
 @st.cache_resource
 def connect_drive():
