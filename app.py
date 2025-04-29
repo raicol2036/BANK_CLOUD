@@ -8,8 +8,6 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 # === Google Drive 連接 ===
-GAMES_FOLDER_ID = "1G2VWwDHOHhnOKBNdnlut1oG5BOoUYAuf"
-
 @st.cache_resource
 def connect_drive():
     raw_secrets = st.secrets["gdrive"]
@@ -22,6 +20,24 @@ def connect_drive():
     return build('drive', 'v3', credentials=credentials)
 
 drive_service = connect_drive()
+
+# === 自動建立資料夾 ===
+@st.cache_resource
+def create_or_get_folder():
+    query = "mimeType='application/vnd.google-apps.folder' and name='GolfBank_Folder' and trashed=false"
+    results = drive_service.files().list(q=query, spaces='drive').execute()
+    items = results.get('files', [])
+    if items:
+        return items[0]['id']
+    else:
+        file_metadata = {
+            'name': 'GolfBank_Folder',
+            'mimeType': 'application/vnd.google-apps.folder'
+        }
+        file = drive_service.files().create(body=file_metadata, fields='id').execute()
+        return file.get('id')
+
+GAMES_FOLDER_ID = create_or_get_folder()
 
 # === 小工具 Functions ===
 def save_game_to_drive(game_data, game_id):
