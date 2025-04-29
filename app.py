@@ -5,13 +5,13 @@ import json
 import uuid
 import qrcode
 from io import BytesIO
-from pydrive2.auth import GoogleAuth
-from pydrive2.drive import GoogleDrive
+from BANK-GOLF01.auth import GoogleAuth
+from BANK-GOLF01.drive import GoogleDrive
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- Google Drive 設定 ---
 GAMES_FOLDER_ID = "1G2VWwDHOHhnOKBNdnlut1oG5BOoUYAuf"
-SERVICE_ACCOUNT_FILE = "service_account.json"
+SERVICE_ACCOUNT_FILE = "golf-bank-457922-247d05dc736b.json"
 
 # --- 初始化 ---
 gauth = GoogleAuth()
