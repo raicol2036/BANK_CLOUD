@@ -3,11 +3,16 @@ import pandas as pd
 import json
 import uuid
 import qrcode
+import io
 from io import BytesIO
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 
 BASE_URL = "https://bankcloud-ctk4bhakw7fro8k3wmpava.streamlit.app/"
+
+st.set_page_config(page_title="🏌️ Golf BANK v3.2", layout="wide")
+st.title("🏌️ Golf BANK 系統")
 
 @st.cache_resource
 def connect_drive():
@@ -40,10 +45,20 @@ def create_or_get_folder():
 GAMES_FOLDER_ID = create_or_get_folder()
 
 def save_game_to_drive(game_data, game_id):
-    from googleapiclient.http import MediaInMemoryUpload
     file_metadata = {'name': f'game_{game_id}.json', 'parents': [GAMES_FOLDER_ID]}
-    media = MediaInMemoryUpload(json.dumps(game_data, ensure_ascii=False, indent=2).encode(), mimetype='application/json')
-    drive_service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
+    content = io.BytesIO(json.dumps(game_data, ensure_ascii=False, indent=2).encode("utf-8"))
+    media = MediaIoBaseUpload(content, mimetype='application/json')
+
+    # 檢查是否已存在同名檔案
+    query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
+    result = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+    items = result.get('files', [])
+
+    if items:
+        file_id = items[0]['id']
+        drive_service.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
+    else:
+        drive_service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
 
 def load_game_from_drive(game_id):
     query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
@@ -60,9 +75,6 @@ def generate_qr(url):
     buf = BytesIO()
     img.save(buf)
     return buf
-
-st.set_page_config(page_title="🏌️ Golf BANK v3.2", layout="wide")
-st.title("🏌️ Golf BANK 系統")
 
 if "mode" not in st.session_state:
     st.session_state.mode = "選擇參賽球員"
@@ -168,8 +180,7 @@ elif mode == "主控端成績輸入":
         with cols[idx]:
             scores[p] = st.number_input(f"{p}", 1, 15, key=f"score_{p}_{current_hole}_input")
 
-    
-    if st.button("✅ 確認第{}洞成績".format(current_hole + 1)):
+    if st.button(f"✅ 確認第 {current_hole + 1} 洞成績"):
         if not all(p in scores for p in game_data["players"]):
             st.error("❌ 成績輸入不完整")
             st.stop()
