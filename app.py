@@ -36,8 +36,8 @@ else:
     st.error("找不到 course_db.csv！請先準備好球場資料。")
     st.stop()
 
-st.set_page_config(page_title="🏌️ 高爾夫BANK系統", layout="wide")
-st.title("🏌️ 高爾夫BANK系統")
+st.set_page_config(page_title="🏌️ 高爾夫BANK", layout="wide")
+st.title("🏌️ 高爾夫BANK")
 
 # --- 模式選擇 ---
 mode = st.radio("選擇模式", ["建立新比賽", "主控端成績輸入", "隊員查看比賽"])
