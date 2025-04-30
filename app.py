@@ -1,5 +1,4 @@
-# Golf BANK v3.2 完整主程式（含主控端與查看端）
-# 可直接部署於 Streamlit Cloud 或本地執行
+# Golf BANK v3.2 修正版（Streamlit Cloud 可執行）
 
 import streamlit as st
 import pandas as pd
@@ -16,8 +15,8 @@ from googleapiclient.http import MediaIoBaseUpload
 
 BASE_URL = "https://your-streamlit-app-url/"  # 修改為你自己的網址
 
-st.set_page_config(page_title="🏌️ Golf BANK v3.2", layout="wide")
-st.title("🏌️ Golf BANK 系統")
+st.set_page_config(page_title="🏉 Golf BANK v3.2", layout="wide")
+st.title("🏉 Golf BANK 系統")
 
 @st.cache_resource
 def connect_drive():
@@ -74,20 +73,18 @@ def load_game_from_drive(game_id):
     file = drive_service.files().get_media(fileId=file_id).execute()
     return json.loads(file)
 
-# 自動切換查看端模式
-query_params = st.query_params
+query_params = st.experimental_get_query_params()
 if "game_id" in query_params and not st.session_state.get("mode_initialized"):
     st.session_state.mode = "查看端介面"
-    st.session_state.current_game_id = query_params["game_id"]
+    st.session_state.current_game_id = query_params["game_id"][0]
     st.session_state.mode_initialized = True
-    st.rerun()
+    st.experimental_rerun()
 
 if "mode" not in st.session_state:
     st.session_state.mode = "選擇參賽球員"
 if "current_game_id" not in st.session_state:
     st.session_state.current_game_id = ""
 
-# === 主控端：選擇球員 ===
 @st.cache_data
 def load_course_db():
     return pd.read_csv("course_db.csv")
@@ -110,9 +107,8 @@ if mode == "選擇參賽球員":
         st.success("✅ 已選擇4位球員")
         st.session_state.selected_players = player_names
         st.session_state.mode = "設定比賽資料"
-        st.rerun()
+        st.experimental_rerun()
 
-# === 主控端：設定比賽資料 ===
 elif mode == "設定比賽資料":
     st.header("📋 比賽設定")
 
@@ -177,9 +173,8 @@ elif mode == "設定比賽資料":
         save_game_to_drive(game_data, game_id)
         st.session_state.current_game_id = game_id
         st.session_state.mode = "主控端成績輸入"
-        st.rerun()
+        st.experimental_rerun()
 
-# === 主控端：多洞成績輸入 + 比對勝負 ===
 elif mode == "主控端成績輸入":
     game_id = st.session_state.current_game_id
     game_data = load_game_from_drive(game_id)
@@ -278,7 +273,7 @@ elif mode == "主控端成績輸入":
 
                 save_game_to_drive(game_data, game_id)
                 st.session_state[confirmed_key] = True
-                st.rerun()
+                st.experimental_rerun()
         else:
             last_log = game_data["hole_logs"][hole] if hole < len(game_data["hole_logs"]) else "✅ 已確認"
             st.markdown(f"📝 {last_log}")
