@@ -196,7 +196,7 @@ elif mode == "主控端成績輸入":
         img = qrcode.make(qr_url)
         buf = BytesIO()
         img.save(buf)
-        st.image(buf.getvalue(), use_column_width=True)
+        st.image(buf.getvalue(), use_container_width=True)
 
     players = game_data["players"]
     par_list = game_data["par"]
