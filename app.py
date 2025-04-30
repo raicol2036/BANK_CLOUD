@@ -5,6 +5,7 @@ import uuid
 import qrcode
 import io
 from io import BytesIO
+from datetime import datetime
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
@@ -133,8 +134,6 @@ elif mode == "設定比賽資料":
     par = front9["par"].tolist() + back9["par"].tolist()
     hcp = front9["hcp"].tolist() + back9["hcp"].tolist()
     bet_per_person = st.number_input("單人賭金", 10, 1000, 100)
-
-   from datetime import datetime
 
 def generate_game_id():
     today_str = datetime.now().strftime("%Y%m%d")
