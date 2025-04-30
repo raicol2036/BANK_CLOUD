@@ -14,7 +14,7 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-BASE_URL = "https://bankcloud.streamlit.app/"  # 修改為你自己的網址
+BASE_URL = "https://your-streamlit-app-url/"  # 修改為你自己的網址
 
 st.set_page_config(page_title="🏌️ Golf BANK v3.2", layout="wide")
 st.title("🏌️ Golf BANK 系統")
