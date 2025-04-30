@@ -174,80 +174,82 @@ elif mode == "主控端成績輸入":
     hcp = game_data["hcp"][current_hole]
     st.markdown(f"Par: {par} / HCP: {hcp}")
 
-    scores = {}
-    cols = st.columns(len(game_data["players"]))
-    for idx, p in enumerate(game_data["players"]):
-        with cols[idx]:
-            scores[p] = st.number_input(f"{p}", 1, 15, key=f"score_{p}_{current_hole}_input")
-
-    if st.button(f"✅ 確認第 {current_hole + 1} 洞成績"):
-        if not all(p in scores for p in game_data["players"]):
-            st.error("❌ 成績輸入不完整")
-            st.stop()
-
     players = game_data["players"]
-    hcp_this = game_data["hcp"][current_hole]
-    par_this = game_data["par"][current_hole]
-    hdcp = game_data["handicaps"]
-    scores_raw = {p: scores[p] for p in players}
+    scores = {}
+    cols = st.columns(len(players))
 
-    # 計算每人針對其他人的讓桿總數
-    adjusted_scores = {p: 0 for p in players}
-    for p in players:
-        p_total = 0
-        for q in players:
-            if p == q:
-                continue
-            diff = hdcp[q] - hdcp[p]
-            if diff > 0 and hcp_this <= diff:  # 差點低者讓桿
-                p_total += 1
-        adjusted_scores[p] = scores[p] - p_total
+    for idx, p in enumerate(players):
+        with cols[idx]:
+            default_score = game_data["scores"].get(p, {}).get(str(current_hole), par)
+            scores[p] = st.number_input(f"{p}", 1, 15, value=default_score, key=f"score_{p}_{current_hole}_input")
 
-    # 一對多勝負比較
-    victory_map = {}
-    for p in players:
-        wins = 0
-        for q in players:
-            if p == q:
-                continue
-            if adjusted_scores[p] < adjusted_scores[q]:
-                wins += 1
-        victory_map[p] = wins
+    # 確認旗標避免重複上傳
+    flag_key = f"hole_{current_hole}_confirmed"
+    if flag_key not in st.session_state:
+        st.session_state[flag_key] = False
 
-    # 判定勝者
-    winners = [p for p in players if victory_map[p] == len(players) - 1]
+    if not st.session_state[flag_key]:
+        if st.button(f"✅ 確認第 {current_hole + 1} 洞成績"):
+            hdcp = game_data["handicaps"]
+            scores_raw = {p: scores[p] for p in players}
 
-    log = f"Hole {current_hole + 1}: "
-    if len(winners) == 1:
-        winner = winners[0]
-        is_birdy = scores_raw[winner] <= (par_this - 1)
-        birdy_bonus = 1 if is_birdy else 0
-        game_data["running_points"][winner] += 1 + birdy_bonus
-        for p in players:
-            if p != winner and game_data["running_points"][p] > 0:
-                game_data["running_points"][p] -= 1
-        log += f"🏆 {winner} 勝出 {'🐦' if is_birdy else ''}"
+            # 讓桿計算（每人針對其他人）
+            adjusted_scores = {}
+            for p in players:
+                total_adjust = 0
+                for q in players:
+                    if p == q:
+                        continue
+                    diff = hdcp[q] - hdcp[p]
+                    if diff > 0 and hcp <= diff:
+                        total_adjust += 1
+                adjusted_scores[p] = scores[p] - total_adjust
+
+            # 一對多勝負比較
+            victory_map = {}
+            for p in players:
+                wins = 0
+                for q in players:
+                    if p == q:
+                        continue
+                    if adjusted_scores[p] < adjusted_scores[q]:
+                        wins += 1
+                victory_map[p] = wins
+
+            winners = [p for p in players if victory_map[p] == len(players) - 1]
+            log = f"Hole {current_hole + 1}: "
+
+            if len(winners) == 1:
+                winner = winners[0]
+                is_birdy = scores_raw[winner] <= (par - 1)
+                birdy_bonus = 1 if is_birdy else 0
+                game_data["running_points"][winner] += 1 + birdy_bonus
+                for p in players:
+                    if p != winner and game_data["running_points"][p] > 0:
+                        game_data["running_points"][p] -= 1
+                log += f"🏆 {winner} 勝出 {'🐦' if is_birdy else ''}"
+            else:
+                log += "⚖️ 平手"
+
+            # 寫入成績
+            for p in players:
+                game_data["scores"][p][str(current_hole)] = scores[p]
+
+            game_data["hole_logs"].append(log)
+            game_data["completed"] += 1
+
+            # 更新 Rich / Super Rich 狀態
+            for p in players:
+                pt = game_data["running_points"][p]
+                if pt >= 4:
+                    game_data["current_titles"][p] = "Super Rich"
+                elif pt > 0:
+                    game_data["current_titles"][p] = "Rich"
+                else:
+                    game_data["current_titles"][p] = ""
+
+            save_game_to_drive(game_data, game_id)
+            st.session_state[flag_key] = True
+            st.rerun()
     else:
-        log += "⚖️ 平手"
-
-    # 更新紀錄
-    for p in players:
-        game_data["scores"][p][str(current_hole)] = scores[p]
-
-    game_data["hole_logs"].append(log)
-    game_data["completed"] += 1
-
-    # 更新稱號
-    for p in players:
-        pt = game_data["running_points"][p]
-        if pt >= 4:
-            game_data["current_titles"][p] = "Super Rich"
-        elif pt > 0:
-            game_data["current_titles"][p] = "Rich"
-        else:
-            game_data["current_titles"][p] = ""
-
-    save_game_to_drive(game_data, game_id)
-    st.rerun()
-
-st.caption("Golf BANK v3.2 三段式流程版")
+        st.info("✅ 本洞已確認完成，請繼續下一洞。")
