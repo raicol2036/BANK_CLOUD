@@ -19,84 +19,31 @@ st.title("🏌️ Golf BANK 系統")
 def connect_drive():
     raw_secrets = st.secrets["gdrive"]
     secrets_dict = dict(raw_secrets)
-   secrets_dict["private_key"] = secrets_dict["private_key"].replace("\\n", "\n")
+    secrets_dict["private_key"] = secrets_dict["private_key"].replace("\\n", "\n").replace("\n", "\n").replace("\n", "
+")
     credentials = service_account.Credentials.from_service_account_info(
         secrets_dict,
         scopes=["https://www.googleapis.com/auth/drive"]
     )
     return build('drive', 'v3', credentials=credentials)
 
-drive_service = connect_drive()
-
-@st.cache_resource
-def create_or_get_folder():
-    query = "mimeType='application/vnd.google-apps.folder' and name='GolfBank_Folder' and trashed=false"
-    results = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-    items = results.get('files', [])
-    if items:
-        return items[0]['id']
-    else:
-        file_metadata = {
-            'name': 'GolfBank_Folder',
-            'mimeType': 'application/vnd.google-apps.folder'
-        }
-        file = drive_service.files().create(body=file_metadata, fields='id', supportsAllDrives=True).execute()
-        return file.get('id')
-
-GAMES_FOLDER_ID = create_or_get_folder()
-
-def save_game_to_drive(game_data, game_id):
-    file_metadata = {'name': f'game_{game_id}.json', 'parents': [GAMES_FOLDER_ID]}
-    content = io.BytesIO(json.dumps(game_data, ensure_ascii=False, indent=2).encode("utf-8"))
-    media = MediaIoBaseUpload(content, mimetype='application/json')
-
-    query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
-    result = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-    items = result.get('files', [])
-
-    if items:
-        file_id = items[0]['id']
-        drive_service.files().update(fileId=file_id, media_body=media, supportsAllDrives=True).execute()
-    else:
-        drive_service.files().create(body=file_metadata, media_body=media, fields='id', supportsAllDrives=True).execute()
-
-def load_game_from_drive(game_id):
-    query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
-    result = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
-    items = result.get('files', [])
-    if not items:
-        return None
-    file_id = items[0]['id']
-    file = drive_service.files().get_media(fileId=file_id).execute()
-    return json.loads(file)
-
-def generate_qr(url):
-    img = qrcode.make(url)
-    buf = BytesIO()
-    img.save(buf)
-    return buf
-
-@st.cache_data
-def load_course_db():
-    return pd.read_csv("course_db.csv")
-
-@st.cache_data
-def load_players():
-    df = pd.read_csv("players.csv")
-    return df["name"].dropna().tolist()
-
-# 🔰 首頁控制邏輯
+# 測試首頁導向邏輯（不進入內容）
 if "mode" not in st.session_state:
     st.session_state.mode = "首頁"
 
 if "current_game_id" not in st.session_state:
     st.session_state.current_game_id = ""
 
-# ⛔ 自動導向首頁（若未建立比賽時）
 if st.session_state.mode != "首頁" and not st.session_state.current_game_id:
     st.session_state.mode = "首頁"
     st.rerun()
 
+if st.session_state.mode == "首頁":
+    st.header("🏁 開始一場新比賽")
+    if st.button("➕ 開始新比賽"):
+        st.session_state.mode = "選擇參賽球員"
+        st.rerun()
+    st.stop()
 
 # 🔰 首頁：開始新比賽
 if "mode" not in st.session_state:
