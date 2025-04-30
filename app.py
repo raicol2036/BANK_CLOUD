@@ -95,7 +95,7 @@ if "current_game_id" not in st.session_state:
 # ⛔ 自動導向首頁（若未建立比賽時）
 if st.session_state.mode != "首頁" and not st.session_state.current_game_id:
     st.session_state.mode = "首頁"
-    st.experimental_rerun()
+     st.rerun()
 
 if st.session_state.mode == "首頁":
     st.header("🏁 開始一場新比賽")
