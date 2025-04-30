@@ -181,9 +181,9 @@ elif mode == "主控端成績輸入":
             scores[p] = st.number_input(f"{p}", 1, 15, key=f"score_{p}_{current_hole}_input")
 
     if st.button(f"✅ 確認第 {current_hole + 1} 洞成績"):
-    if not all(p in scores for p in game_data["players"]):
-        st.error("❌ 成績輸入不完整")
-        st.stop()
+        if not all(p in scores for p in game_data["players"]):
+            st.error("❌ 成績輸入不完整")
+            st.stop()
 
     players = game_data["players"]
     hcp_this = game_data["hcp"][current_hole]
