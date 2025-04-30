@@ -134,26 +134,47 @@ elif mode == "設定比賽資料":
     hcp = front9["hcp"].tolist() + back9["hcp"].tolist()
     bet_per_person = st.number_input("單人賭金", 10, 1000, 100)
 
-    if st.button("✅ 開始球局"):
-        game_id = str(uuid.uuid4())[:8]
-        game_data = {
-            "game_id": game_id,
-            "players": player_names,
-            "handicaps": handicaps,
-            "par": par,
-            "hcp": hcp,
-            "bet_per_person": bet_per_person,
-            "scores": {p: {str(i): par[i] for i in range(18)} for p in player_names},
-            "events": {},
-            "running_points": {p: 0 for p in player_names},
-            "current_titles": {p: "" for p in player_names},
-            "hole_logs": [],
-            "completed": 0
-        }
-        save_game_to_drive(game_data, game_id)
-        st.session_state.current_game_id = game_id
-        st.session_state.mode = "主控端成績輸入"
-        st.rerun()
+   from datetime import datetime
+
+def generate_game_id():
+    today_str = datetime.now().strftime("%Y%m%d")
+    query = f"name contains '{today_str}' and '{GAMES_FOLDER_ID}' in parents and trashed=false"
+    result = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+    items = result.get('files', [])
+
+    used_numbers = []
+    for item in items:
+        name = item['name']
+        if name.startswith(f"game_{today_str}_"):
+            try:
+                suffix = int(name.split("_")[-1].split(".")[0])
+                used_numbers.append(suffix)
+            except:
+                continue
+
+    next_number = max(used_numbers, default=0) + 1
+    return f"{today_str}_{str(next_number).zfill(2)}"
+
+if st.button("✅ 開始球局"):
+    game_id = generate_game_id()
+    game_data = {
+        "game_id": game_id,
+        "players": player_names,
+        "handicaps": handicaps,
+        "par": par,
+        "hcp": hcp,
+        "bet_per_person": bet_per_person,
+        "scores": {p: {} for p in player_names},
+        "events": {},
+        "running_points": {p: 0 for p in player_names},
+        "current_titles": {p: "" for p in player_names},
+        "hole_logs": [],
+        "completed": 0
+    }
+    save_game_to_drive(game_data, game_id)
+    st.session_state.current_game_id = game_id
+    st.session_state.mode = "主控端成績輸入"
+    st.rerun()
 
 elif mode == "主控端成績輸入":
     game_id = st.session_state.current_game_id
