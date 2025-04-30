@@ -1,4 +1,4 @@
-# Golf BANK v3.3 增加強制導向首頁機制（未建立比賽時自動跳回）
+
 import streamlit as st
 import pandas as pd
 import json
@@ -19,7 +19,8 @@ st.title("🏌️ Golf BANK 系統")
 def connect_drive():
     raw_secrets = st.secrets["gdrive"]
     secrets_dict = dict(raw_secrets)
-    secrets_dict["private_key"] = secrets_dict["private_key"].replace("\\n", "\n")
+    secrets_dict["private_key"] = secrets_dict["private_key"].replace("\n", "
+")
     credentials = service_account.Credentials.from_service_account_info(
         secrets_dict,
         scopes=["https://www.googleapis.com/auth/drive"]
@@ -95,16 +96,8 @@ if "current_game_id" not in st.session_state:
 # ⛔ 自動導向首頁（若未建立比賽時）
 if st.session_state.mode != "首頁" and not st.session_state.current_game_id:
     st.session_state.mode = "首頁"
-     st.rerun()
+    st.rerun()
 
-if st.session_state.mode == "首頁":
-    st.header("🏁 開始一場新比賽")
-    if st.button("➕ 開始新比賽"):
-        st.session_state.mode = "選擇參賽球員"
-        st.rerun()
-    st.stop()
-
-# 👉 後續主程式內容接續...
 
 # 🔰 首頁：開始新比賽
 if "mode" not in st.session_state:
