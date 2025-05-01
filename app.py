@@ -26,7 +26,7 @@ def load_course_db_file():
     return pd.read_csv("course_db.csv")
 
 try:
-    course_df = load_course_db()
+    course_df = load_course_db_file()
     st.toast("✅ 球場資料加載成功", icon="⛳")
 except FileNotFoundError:
     st.error("❌ 錯誤：找不到 course_db.csv")
