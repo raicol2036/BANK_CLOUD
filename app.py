@@ -21,23 +21,23 @@ st.title("🏌️ Golf BANK 系統")
 
 # ================== 全局数据加载 ==================
 @st.cache_data(ttl=3600, show_spinner="讀取球場資料中...")
-def load_course_db_file():
+def load_course_db():
     # 這裡不放任何 UI 操作
     return pd.read_csv("course_db.csv")
 
 try:
-    course_df = load_course_db_file()
+    course_df = load_course_db()
     st.toast("✅ 球場資料加載成功", icon="⛳")
 except FileNotFoundError:
     st.error("❌ 錯誤：找不到 course_db.csv")
     st.stop()
 
 @st.cache_data(ttl=3600, show_spinner="讀取球員資料中...")
-def load_players_file():
+def load_players():
     return pd.read_csv("players.csv")
 
 try:
-    players_df = load_players_file()
+    players_df = load_players()
     all_players = players_df["name"].dropna().tolist()
     st.toast("✅ 球員名單加載成功", icon="👤")
 except FileNotFoundError:
