@@ -35,18 +35,18 @@ def load_course_db():
         st.error("❌ 錯誤：找不到 course_db.csv 文件")
         st.stop()
 
-@st.cache_data(
-    ttl=3600,
-    show_spinner="加载球员名单..."
-)
-def load_players():
-    try:
-        df = pd.read_csv("players.csv")
-        st.toast("✅ 球員名單加載成功", icon="👤")
-        return df["name"].dropna().tolist()
-    except FileNotFoundError:
-        st.error("❌ 錯誤：找不到 players.csv 文件")
-        st.stop()
+@st.cache_data(ttl=3600, show_spinner="加载球场数据...")
+def load_course_db_raw():
+    file_mtime = os.path.getmtime("course_db.csv")  # for caching effect
+    return pd.read_csv("course_db.csv")
+
+try:
+    course_df = load_course_db_raw()
+    st.toast("✅ 球場資料加載成功", icon="⛳")
+except FileNotFoundError:
+    st.error("❌ 錯誤：找不到 course_db.csv 文件")
+    st.stop()
+
 
 course_df = load_course_db()
 all_players = load_players()
