@@ -245,7 +245,7 @@ elif st.session_state.mode == "設定比賽資料":
         
         bet_per_person = st.number_input(
             "單人賭金 (單位)",
-            10, 1000, 100, 10
+            100, 500, 100, 100
         )
         
         if st.form_submit_button("🚀 開始比賽"):
