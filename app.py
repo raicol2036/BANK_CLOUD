@@ -15,7 +15,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
 # ================== 全局配置 ==================
-BASE_URL = "https://your-streamlit-app-url/"  # 必须修改为实际部署地址
+BASE_URL = "hhttps://bankcloud11111.streamlit.app/"  # 必须修改为实际部署地址
 st.set_page_config(page_title="🏌️ Golf BANK v3.2", layout="wide")
 st.title("🏌️ Golf BANK 系統")
 
@@ -26,7 +26,7 @@ def load_course_db_file():
     return pd.read_csv("course_db.csv")
 
 try:
-    course_df = load_course_db_file()
+    course_df = load_course_db()
     st.toast("✅ 球場資料加載成功", icon="⛳")
 except FileNotFoundError:
     st.error("❌ 錯誤：找不到 course_db.csv")
