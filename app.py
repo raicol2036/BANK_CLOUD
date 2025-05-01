@@ -20,21 +20,6 @@ st.set_page_config(page_title="🏌️ Golf BANK v3.2", layout="wide")
 st.title("🏌️ Golf BANK 系統")
 
 # ================== 全局数据加载 ==================
-@st.cache_data(
-    ttl=3600,
-    show_spinner="加载球场数据...",
-    hash_funcs={"__main__": lambda _: "static"}
-)
-def load_course_db():
-    try:
-        file_mtime = os.path.getmtime("course_db.csv")
-        df = pd.read_csv("course_db.csv")
-        st.toast("✅ 球場資料加載成功", icon="⛳")
-        return df
-    except FileNotFoundError:
-        st.error("❌ 錯誤：找不到 course_db.csv 文件")
-        st.stop()
-
 @st.cache_data(ttl=3600, show_spinner="讀取球場資料中...")
 def load_course_db_file():
     # 這裡不放任何 UI 操作
