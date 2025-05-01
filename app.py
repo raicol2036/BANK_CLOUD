@@ -1,6 +1,4 @@
-# Golf BANK v3.2 完整修正版
-# 已修复所有缩进问题和缓存错误
-
+# ✅ Golf BANK v3.3 主程式 Part 1：初始化、載入、雲端整合、狀態管理
 import streamlit as st
 import pandas as pd
 import json
@@ -14,374 +12,245 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
-# ================== 全局配置 ==================
-BASE_URL = "hhttps://bankcloud11111.streamlit.app/"  # 必须修改为实际部署地址
-st.set_page_config(page_title="🏌️ Golf BANK v3.2", layout="wide")
+# ========== 基本設定 ==========
+BASE_URL = "https://your-streamlit-app-url/"  # 修改為實際部署網址
+st.set_page_config(page_title="🏌️ Golf BANK v3.3", layout="wide")
 st.title("🏌️ Golf BANK 系統")
 
-# ================== 全局数据加载 ==================
-@st.cache_data(ttl=3600, show_spinner="讀取球場資料中...")
+# ========== 載入資料 ==========
+@st.cache_data(ttl=3600)
 def load_course_db():
-    # 這裡不放任何 UI 操作
     return pd.read_csv("course_db.csv")
 
-try:
-    course_df = load_course_db()
-    st.toast("✅ 球場資料加載成功", icon="⛳")
-except FileNotFoundError:
-    st.error("❌ 錯誤：找不到 course_db.csv")
-    st.stop()
-
-@st.cache_data(ttl=3600, show_spinner="讀取球員資料中...")
+@st.cache_data(ttl=3600)
 def load_players():
     return pd.read_csv("players.csv")
 
 try:
-    players_df = load_players()
-    all_players = players_df["name"].dropna().tolist()
-    st.toast("✅ 球員名單加載成功", icon="👤")
-except FileNotFoundError:
-    st.error("❌ 錯誤：找不到 players.csv")
+    course_df = load_course_db()
+    st.toast("✅ 球場資料載入成功", icon="⛳")
+except:
+    st.error("❌ 找不到 course_db.csv")
     st.stop()
 
-course_df = load_course_db()
-all_players = load_players()
+try:
+    players_df = load_players()
+    all_players = players_df["name"].dropna().tolist()
+    st.toast("✅ 球員名單載入成功", icon="👤")
+except:
+    st.error("❌ 找不到 players.csv")
+    st.stop()
 
-# ================== Google Drive 整合 ==================
-@st.cache_resource(show_spinner="連接Google雲端硬碟...")
+# ========== Google Drive 整合 ==========
+@st.cache_resource(show_spinner="連接 Google Drive...")
 def connect_drive():
-    try:
-        raw_secrets = st.secrets["gdrive"]
-        secrets_dict = dict(raw_secrets)
-        secrets_dict["private_key"] = secrets_dict["private_key"].replace("\\n", "\n")
-        
-        required_fields = ["type", "project_id", "private_key_id", 
-                          "private_key", "client_email"]
-        for field in required_fields:
-            if field not in secrets_dict:
-                raise ValueError(f"缺失必要字段: {field}")
-
-        credentials = service_account.Credentials.from_service_account_info(
-            secrets_dict,
-            scopes=["https://www.googleapis.com/auth/drive"]
-        )
-        return build('drive', 'v3', credentials=credentials)
-    except Exception as e:
-        st.error(f"🔴 Google Drive 連接失敗: {str(e)}")
-        st.stop()
+    raw = dict(st.secrets["gdrive"])
+    raw["private_key"] = raw["private_key"].replace("\\n", "\n")
+    credentials = service_account.Credentials.from_service_account_info(
+        raw, scopes=["https://www.googleapis.com/auth/drive"]
+    )
+    return build("drive", "v3", credentials=credentials)
 
 drive_service = connect_drive()
 
 @st.cache_resource
 def create_or_get_folder():
-    try:
-        query = "mimeType='application/vnd.google-apps.folder' and name='GolfBank_Folder' and trashed=false"
-        results = drive_service.files().list(
-            q=query,
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        items = results.get('files', [])
-        return items[0]['id'] if items else drive_service.files().create(
-            body={'name': 'GolfBank_Folder', 'mimeType': 'application/vnd.google-apps.folder'},
-            fields='id',
-            supportsAllDrives=True
-        ).execute().get('id')
-    except Exception as e:
-        st.error(f"🔴 雲端資料夾操作失敗: {str(e)}")
-        st.stop()
+    query = "mimeType='application/vnd.google-apps.folder' and name='GolfBank_Folder' and trashed=false"
+    res = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute()
+    items = res.get("files", [])
+    if items:
+        return items[0]["id"]
+    folder = drive_service.files().create(
+        body={"name": "GolfBank_Folder", "mimeType": "application/vnd.google-apps.folder"},
+        fields="id", supportsAllDrives=True
+    ).execute()
+    return folder["id"]
 
 GAMES_FOLDER_ID = create_or_get_folder()
 
-def save_game_to_drive(game_data, game_id):
+def save_game_to_drive(data, game_id):
     try:
-        content = io.BytesIO(json.dumps(game_data, ensure_ascii=False, indent=2).encode("utf-8"))
+        content = io.BytesIO(json.dumps(data, ensure_ascii=False).encode("utf-8"))
         media = MediaIoBaseUpload(content, mimetype='application/json')
-        
         query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents"
-        existing_files = drive_service.files().list(
-            q=query,
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute().get('files', [])
-
-        if existing_files:
-            drive_service.files().update(
-                fileId=existing_files[0]['id'],
-                media_body=media,
-                supportsAllDrives=True
-            ).execute()
+        existing = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute().get("files", [])
+        if existing:
+            drive_service.files().update(fileId=existing[0]["id"], media_body=media, supportsAllDrives=True).execute()
         else:
             drive_service.files().create(
-                body={'name': f'game_{game_id}.json', 'parents': [GAMES_FOLDER_ID]},
-                media_body=media,
-                fields='id',
-                supportsAllDrives=True
+                body={"name": f"game_{game_id}.json", "parents": [GAMES_FOLDER_ID]},
+                media_body=media, fields="id", supportsAllDrives=True
             ).execute()
-        st.toast("💾 數據已保存到雲端", icon="☁️")
+        time.sleep(1)
+        st.toast("☁️ 雲端儲存成功", icon="💾")
     except Exception as e:
-        st.error(f"❌ 雲端保存失敗: {str(e)}")
+        st.error("❌ 儲存失敗: " + str(e))
 
 def load_game_from_drive(game_id):
     try:
         query = f"name='game_{game_id}.json' and '{GAMES_FOLDER_ID}' in parents"
-        result = drive_service.files().list(
-            q=query,
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True
-        ).execute()
-        items = result.get('files', [])
-        return json.loads(drive_service.files().get_media(fileId=items[0]['id']).execute()) if items else None
-    except Exception as e:
-        st.error(f"❌ 雲端加載失敗: {str(e)}")
+        files = drive_service.files().list(q=query, supportsAllDrives=True, includeItemsFromAllDrives=True).execute().get("files", [])
+        if not files:
+            return None
+        content = drive_service.files().get_media(fileId=files[0]["id"]).execute()
+        return json.loads(content)
+    except:
         return None
 
-# ================== 狀態管理 ==================
+# ========== 狀態管理 ==========
 if "game_id" in st.query_params and not st.session_state.get("mode_initialized"):
     st.session_state.update({
-        "mode": "查看端介面",
+        "mode": "viewer",
         "current_game_id": st.query_params["game_id"],
         "mode_initialized": True
     })
     st.rerun()
 
 if "mode" not in st.session_state:
-    st.session_state.mode = "選擇參賽球員"
+    st.session_state.mode = "setup"
 if "current_game_id" not in st.session_state:
     st.session_state.current_game_id = ""
+# ✅ Golf BANK v3.3 主程式 Part 2：選手設定、成績輸入、勝負邏輯、總結畫面
 
-# ================== 模式路由控制（关键修正区域）==================
-if st.session_state.mode == "查看端介面":
-    st.header("📊 實時比賽數據查看端")
-    game_id = st.session_state.current_game_id
-    game_data = load_game_from_drive(game_id)
-    
-    if not game_data:
-        st.error("⚠️ 找不到比賽資料")
-        st.stop()
-    
-    with st.expander("比賽概況", expanded=True):
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.subheader(f"比賽 ID: `{game_id}`")
-        with col2:
-            st.metric("當前進度", f"{game_data['completed']}/18 洞")
-        with col3:
-            st.metric("單注金額", f"${game_data['bet_per_person']}")
-        st.write("參賽球員:", " | ".join(game_data["players"]))
-    
-    with st.expander("實時積分榜"):
-        points_data = [{
-            "球員": p,
-            "當前積分": game_data["running_points"][p],
-            "頭銜": game_data["current_titles"][p],
-            "調整差點": game_data["handicaps"][p]
-        } for p in game_data["players"]]
-        st.dataframe(pd.DataFrame(points_data), use_container_width=True)
-    
-    with st.expander("逐洞記錄"):
-        for idx, log in enumerate(game_data["hole_logs"], 1):
-            st.code(f"第 {idx} 洞: {log}", language="markdown")
-    
-    if game_data["completed"] >= 18:
-        st.success("🏁 比賽結束！最終結算")
-        settlement_data = [{
-            "球員": p,
-            "淨積分": game_data["running_points"][p],
-            "結算金額": game_data["running_points"][p] * game_data["bet_per_person"]
-        } for p in game_data["players"]]
-        st.dataframe(pd.DataFrame(settlement_data), use_container_width=True)
-
-elif st.session_state.mode == "選擇參賽球員":
+# ========== 選手設定 ==========
+if st.session_state.mode == "setup":
     st.header("👥 選擇參賽球員")
-    selected_players = st.multiselect(
-        "從名單中選擇",
-        all_players,
-        key="player_select",
-        max_selections=4
-    )
-    
-    col1, col2 = st.columns([0.3, 0.7])
-    with col1:
-        if st.button("✅ 確認名單", disabled=len(selected_players) < 2):
-            st.session_state.selected_players = selected_players
-            st.session_state.mode = "設定比賽資料"
-            st.rerun()
-    with col2:
-        st.write("已選擇球員:", " | ".join(selected_players) if selected_players else "尚未選擇")
+    selected_players = st.multiselect("從名單中選擇 (最多4人)", all_players, max_selections=4)
 
-elif st.session_state.mode == "設定比賽資料":
-    st.header("📋 比賽設定")
-    players = st.session_state.selected_players
-    
-    with st.form("game_setup"):
-        st.subheader("球員差點設定")
-        cols = st.columns(len(players))
-        handicaps = {}
-        for idx, p in enumerate(players):
-            with cols[idx]:
-                handicaps[p] = st.number_input(
-                    f"{p} 差點", 0, 54, 0, key=f"hdcp_{p}"
-                )
-        
-        st.subheader("球場設定")
-        selected_course = st.selectbox(
-            "選擇球場",
-            course_df["course_name"].unique(),
-            index=0
-        )
-        
-        areas_df = course_df[course_df["course_name"] == selected_course]
-        valid_areas = areas_df.groupby("area").filter(lambda x: len(x) == 9)["area"].unique()
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            front9_area = st.selectbox("前九洞區域", valid_areas)
-        with col2:
-            back9_area = st.selectbox("後九洞區域", [a for a in valid_areas if a != front9_area])
-        
-        front9 = areas_df[areas_df["area"] == front9_area].sort_values("hole")
-        back9 = areas_df[areas_df["area"] == back9_area].sort_values("hole")
-        
-        bet_per_person = st.number_input(
-            "單人賭金 (單位)",
-            100, 500, 100, 100
-        )
-        
-        if st.form_submit_button("🚀 開始比賽"):
-            today_str = datetime.now().strftime("%Y%m%d")
-            existing = drive_service.files().list(
-                q=f"name contains '{today_str}' and '{GAMES_FOLDER_ID}' in parents",
-                supportsAllDrives=True
-            ).execute().get('files', [])
-            game_number = len([f for f in existing if f['name'].startswith(f"game_{today_str}_")]) + 1
-            game_id = f"{today_str}_{game_number:02d}"
-            
-            game_data = {
-                "game_id": game_id,
-                "players": players,
-                "handicaps": handicaps,
-                "par": front9["par"].tolist() + back9["par"].tolist(),
-                "hcp": front9["hcp"].tolist() + back9["hcp"].tolist(),
-                "bet_per_person": bet_per_person,
-                "scores": {p: {} for p in players},
-                "running_points": {p: 0 for p in players},
-                "current_titles": {p: "" for p in players},
-                "hole_logs": [],
-                "completed": 0
-            }
-            
-            save_game_to_drive(game_data, game_id)
-            st.session_state.current_game_id = game_id
-            st.session_state.mode = "主控端成績輸入"
-            st.rerun()
+    if len(selected_players) >= 2:
+        with st.form("game_setup"):
+            st.subheader("球員差點設定")
+            cols = st.columns(len(selected_players))
+            handicaps = {}
+            for i, p in enumerate(selected_players):
+                with cols[i]:
+                    handicaps[p] = st.number_input(f"{p} 差點", 0, 54, 0)
 
-elif st.session_state.mode == "主控端成績輸入":
+            course = st.selectbox("選擇球場", course_df["course_name"].unique())
+            area_df = course_df[course_df["course_name"] == course]
+            valid_areas = area_df.groupby("area").filter(lambda x: len(x)==9)["area"].unique()
+            col1, col2 = st.columns(2)
+            with col1:
+                a1 = st.selectbox("前九洞", valid_areas)
+            with col2:
+                a2 = st.selectbox("後九洞", [x for x in valid_areas if x != a1])
+
+            bet = st.number_input("每人賭金", 10, 1000, 100, 10)
+            if st.form_submit_button("🚀 開始比賽"):
+                df1 = area_df[area_df["area"] == a1].sort_values("hole")
+                df2 = area_df[area_df["area"] == a2].sort_values("hole")
+
+                game_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+                game_data = {
+                    "game_id": game_id,
+                    "players": selected_players,
+                    "handicaps": handicaps,
+                    "par": df1["par"].tolist() + df2["par"].tolist(),
+                    "hcp": df1["hcp"].tolist() + df2["hcp"].tolist(),
+                    "bet_per_person": bet,
+                    "scores": {p: {} for p in selected_players},
+                    "running_points": {p: 0 for p in selected_players},
+                    "current_titles": {p: "" for p in selected_players},
+                    "hole_logs": [],
+                    "completed": 0,
+                    "carryover": 0
+                }
+                save_game_to_drive(game_data, game_id)
+                st.session_state.current_game_id = game_id
+                st.session_state.mode = "input"
+                st.rerun()
+
+# ========== 成績輸入 ==========
+elif st.session_state.mode == "input":
     game_id = st.session_state.current_game_id
     game_data = load_game_from_drive(game_id)
-    
     if not game_data:
-        st.error("❌ 比賽資料異常")
+        st.error("❌ 無法讀取比賽資料")
         st.stop()
-    
-    col1, col2 = st.columns([0.7, 0.3])
-    with col1:
-        st.header(f"⛳ 成績輸入 - {game_id}")
-    with col2:
-        qr = qrcode.make(f"{BASE_URL}?game_id={game_id}")
-        buf = BytesIO()
-        qr.save(buf)
-        st.image(buf.getvalue(), caption="查看端二維碼")
-    
-    for hole in range(18):
-        st.divider()
+
+    hole = game_data["completed"]
+    if hole >= 18:
+        st.success("🏁 比賽已完成，下方為最終結算：")
+        players = game_data["players"]
+        scores = game_data["scores"]
+        par = game_data["par"]
+        hcp = game_data["hcp"]
+        handicaps = game_data["handicaps"]
+
+        results = {p: {"勝": 0, "平": 0, "負": 0, "積分": game_data["running_points"][p]} for p in players}
+
+        for h in range(18):
+            current_par = par[h]
+            current_hcp = hcp[h]
+            adj = {}
+            for p in players:
+                adjust = sum(1 for q in players if p != q and (handicaps[q] - handicaps[p]) > 0 and current_hcp <= (handicaps[q] - handicaps[p]))
+                adj[p] = scores[p][str(h)] - adjust
+            victory = {p: sum(1 for q in players if p != q and adj[p] < adj[q]) for p in players}
+            winners = [p for p, v in victory.items() if v == len(players)-1]
+            for p in players:
+                if len(winners) == 1:
+                    results[p]["勝"] += 1 if p == winners[0] else 0
+                    results[p]["負"] += 1 if p != winners[0] else 0
+                else:
+                    results[p]["平"] += 1
+
+        final_rows = []
+        for p in players:
+            r = results[p]
+            final_rows.append({
+                "球員": p,
+                "勝": r["勝"], "平": r["平"], "負": r["負"],
+                "積分": r["積分"],
+                "結算金額": r["積分"] * game_data["bet_per_person"]
+            })
+        df_final = pd.DataFrame(final_rows).sort_values("積分", ascending=False, ignore_index=True)
+        st.dataframe(df_final, use_container_width=True)
+        st.stop()
+
+    st.subheader(f"第 {hole+1} 洞 成績輸入")
+    st.write(f"Par {game_data['par'][hole]} | HCP {game_data['hcp'][hole]}")
+
+    scores = {}
+    for p in game_data["players"]:
+        scores[p] = st.number_input(f"{p} 桿數", 1, 15, game_data['par'][hole], key=f"hole_{hole}_{p}")
+
+    if st.button("✅ 確認本洞成績"):
         current_par = game_data["par"][hole]
         current_hcp = game_data["hcp"][hole]
-        
-        st.markdown(f"### 第 {hole+1} 洞 (Par {current_par} | HCP {current_hcp})")
-        
-        cols = st.columns(len(game_data["players"]))
-        scores = {}
-        for idx, player in enumerate(game_data["players"]):
-            with cols[idx]:
-                default = game_data["scores"][player].get(str(hole), current_par)
-                scores[player] = st.number_input(
-                    f"{player} 桿數", 1, 15, default, key=f"hole_{hole}_{player}"
-                )
-        
-        confirmed = st.session_state.get(f"hole_{hole}_confirmed", False)
-        if not confirmed and st.button(f"✅ 確認第 {hole+1} 洞成績", key=f"confirm_{hole}"):
-            adjusted = {}
-            for p in game_data["players"]:
-                adjust = sum(
-                    1 for q in game_data["players"]
-                    if p != q and 
-                    (game_data["handicaps"][q] - game_data["handicaps"][p]) > 0 and 
-                    current_hcp <= (game_data["handicaps"][q] - game_data["handicaps"][p])
-                )
-                adjusted[p] = scores[p] - adjust
-            
-            victory = {p: sum(1 for q in game_data["players"] if p != q and adjusted[p] < adjusted[q]) 
-                      for p in game_data["players"]}
-            winners = [p for p, wins in victory.items() if wins == len(game_data["players"])-1]
-            
-            if len(winners) == 1:
-                winner = winners[0]
-                birdie = scores[winner] <= (current_par - 1)
-                game_data["running_points"][winner] += 1 + (1 if birdie else 0)
-                
-                for p in game_data["players"]:
-                    if p != winner:
-                        game_data["running_points"][p] = max(0, game_data["running_points"][p] - 1)
-                
-                log_msg = f"第 {hole+1} 洞：{winner} 勝出{' 🐦' if birdie else ''}"
-            else:
-                log_msg = f"第 {hole+1} 洞：平手"
-            
-            for p in game_data["players"]:
-                game_data["scores"][p][str(hole)] = scores[p]
-            
-            game_data["hole_logs"].append(log_msg)
-            game_data["completed"] = hole + 1
-            
-            for p in game_data["players"]:
-                pts = game_data["running_points"][p]
-                game_data["current_titles"][p] = (
-                    "💰 Super Rich" if pts >= 4 else
-                    "💵 Rich" if pts > 0 else ""
-                )
-            
-            save_game_to_drive(game_data, game_id)
-            st.session_state[f"hole_{hole}_confirmed"] = True
-            st.rerun()
-        
-        if confirmed:
-            st.info(f"📝 已確認: {game_data['hole_logs'][hole]}")
+        adj = {}
+        for p in game_data["players"]:
+            adjust = sum(1 for q in game_data["players"] if p != q and (game_data["handicaps"][q] - game_data["handicaps"][p]) > 0 and current_hcp <= (game_data["handicaps"][q] - game_data["handicaps"][p]))
+            adj[p] = scores[p] - adjust
 
-else:
-    st.warning("⚠️ 系統狀態異常，正在重置...")
-    time.sleep(2)
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-    st.rerun()
+        victory = {p: sum(1 for q in adj if p != q and adj[p] < adj[q]) for p in adj}
+        winners = [p for p in victory if victory[p] == len(game_data["players"])-1]
 
-# ================== 系統維護面板 ==================
-with st.sidebar.expander("🔧 系統維護"):
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("♻️ 清除前端緩存"):
-            st.cache_data.clear()
-            st.success("前端緩存已清除")
-    with col2:
-        if st.button("🔄 重設所有狀態"):
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.rerun()
-    
-    st.write("### 數據版本信息")
-    st.metric("球場數據版本", datetime.fromtimestamp(os.path.getmtime("course_db.csv")).strftime("%Y-%m-%d %H:%M"))
-    st.metric("球員數據版本", datetime.fromtimestamp(os.path.getmtime("players.csv")).strftime("%Y-%m-%d %H:%M"))
+        if len(winners) == 1:
+            w = winners[0]
+            birdie = scores[w] <= current_par - 1
+            total = 1 + game_data["carryover"] + (1 if birdie else 0)
+            game_data["running_points"][w] += total
 
-# ================== 頁尾聲明 ==================
-st.divider()
-st.caption(f"Golf BANK v3.2 | 高爾夫球局管理系統 | 數據最後更新：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
+            for p in game_data["players"]:
+                if p != w:
+                    game_data["running_points"][p] = max(0, game_data["running_points"][p] - 1)
+                    if birdie and game_data["running_points"][p] > 0:
+                        game_data["running_points"][p] -= 1
+
+            game_data["hole_logs"].append(f"第 {hole+1} 洞：{w} 勝{' 🐦' if birdie else ''}（累積 {game_data['carryover']} 點）")
+            game_data["carryover"] = 0
+        else:
+            game_data["hole_logs"].append(f"第 {hole+1} 洞：平手（累積中）")
+            game_data["carryover"] += 1
+
+        for p in game_data["players"]:
+            game_data["scores"][p][str(hole)] = scores[p]
+            pts = game_data["running_points"][p]
+            game_data["current_titles"][p] = "💰 Super Rich" if pts >= 4 else ("💵 Rich" if pts > 0 else "")
+
+        game_data["completed"] += 1
+        save_game_to_drive(game_data, game_id)
+        st.rerun()
+
+# 🟩 END v3.3
