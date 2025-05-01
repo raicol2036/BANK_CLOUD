@@ -14,7 +14,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 
 # ================== 全局配置 ==================
-BASE_URL = "https://your-streamlit-app-url/"  # 必须修改为实际部署地址
+BASE_URL = "https://bankcloud11111.streamlit.app/"  # 必须修改为实际部署地址
 st.set_page_config(page_title="🏌️ Golf BANK v3.2", layout="wide")
 st.title("🏌️ Golf BANK 系統")
 
